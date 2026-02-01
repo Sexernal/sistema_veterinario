@@ -32,7 +32,6 @@ function CreateAdminModal({ onClose, onCreated }) {
         password: form.password
       });
 
-      // El servidor debería devolver data.user (con role = 'admin')
       const newAdmin = res.data?.data?.user || res.data?.data || res.data;
       onCreated && onCreated(newAdmin);
       onClose();
@@ -99,25 +98,39 @@ function CreateAdminModal({ onClose, onCreated }) {
   );
 }
 
-/* --------------------- CreatePropietarioModal --------------------- */
+/* --------------------- CreatePropietarioModal (AHORA permite password opcional) --------------------- */
 function CreatePropModal({ onClose, onCreated }) {
+  // ahora password opcional + confirmPassword
   const [form, setForm] = useState({ nombre: "", email: "", telefono: "", direccion: "" });
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
+
   const validate = () => {
     const e = [];
     if (!form.nombre || form.nombre.trim().length < 2) e.push("Nombre mínimo 2 caracteres.");
     if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.push("Email inválido.");
+    // password es opcional: si se provee validar requisitos
+    if (password) {
+      if (password.length < 8) e.push("La contraseña debe tener al menos 8 caracteres.");
+      if (password !== confirmPassword) e.push("Las contraseñas no coinciden.");
+    }
     setErrors(e);
     return e.length === 0;
   };
+
   const submit = async (ev) => {
     ev?.preventDefault();
     setErrors([]);
     if (!validate()) return;
     setLoading(true);
     try {
-      const res = await expressApi.post('/propietarios', form);
+      // enviar password solo si lo proporcionó el admin
+      const payload = { ...form };
+      if (password) payload.password = password;
+
+      const res = await expressApi.post('/propietarios', payload);
       const created = res.data?.data || res.data;
       onCreated(created);
       onClose();
@@ -157,6 +170,19 @@ function CreatePropModal({ onClose, onCreated }) {
           <label style={{display:'block', marginTop:8}}>
             <div style={{fontSize:13, fontWeight:600}}>Dirección</div>
             <input className="input" value={form.direccion} onChange={(e)=>setForm({...form, direccion:e.target.value})} />
+          </label>
+
+          <hr style={{ margin: '12px 0' }} />
+
+          <label style={{display:'block', marginTop:8}}>
+            <div style={{fontSize:13, fontWeight:600}}>Contraseña (opcional)</div>
+            <input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Dejar vacío si no quieres crear contraseña" />
+            <small style={{ color: 'var(--subtext)' }}>Si la añades, el propietario podrá iniciar sesión en la app con email + contraseña.</small>
+          </label>
+
+          <label style={{display:'block', marginTop:8}}>
+            <div style={{fontSize:13, fontWeight:600}}>Confirmar contraseña</div>
+            <input className="input" type="password" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} />
           </label>
 
           {errors.length>0 && (
@@ -284,7 +310,6 @@ function ProfileModal({ onClose, userCurrent, onUpdated }) {
     const e = [];
     if (!form.nombre || form.nombre.trim().length < 2) e.push("Nombre mínimo 2 caracteres.");
     if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.push("Email inválido.");
-    // Si quiere cambiar contraseña, exigir current + min length
     if (form.newPassword) {
       if (!form.currentPassword) e.push("Contraseña actual requerida para cambiar la contraseña.");
       if (form.newPassword.length < 8) e.push("Nueva contraseña: mínimo 8 caracteres.");
@@ -308,13 +333,11 @@ function ProfileModal({ onClose, userCurrent, onUpdated }) {
       };
       const res = await expressApi.put('/auth/profile', payload);
       const updated = res.data?.data || res.data;
-      // Actualizar storage y notificar al padre
       localStorage.setItem('user', JSON.stringify(updated));
       onUpdated && onUpdated(updated);
       onClose();
     } catch (err) {
       const srv = err.response?.data;
-      // manejar errores tanto array como message
       if (srv?.errors && Array.isArray(srv.errors)) {
         setErrors(srv.errors.map(x => x.msg || x.message || JSON.stringify(x)));
       } else if (srv?.message) {
@@ -389,17 +412,15 @@ function ProfileModal({ onClose, userCurrent, onUpdated }) {
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userSource, setUserSource] = useState(null); // <-- nuevo: fuente de login (express|profesor|local)
+  const [userSource, setUserSource] = useState(null);
   const [totals, setTotals] = useState({ propietarios: 0, mascotas: 0 });
   const [loadingMetrics, setLoadingMetrics] = useState(true);
 
-  // modales
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showPropModal, setShowPropModal] = useState(false);
   const [showMascotaModal, setShowMascotaModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  // propietarios list (para selector en crear mascota)
   const [propietariosList, setPropietariosList] = useState([]);
 
   useEffect(() => {
@@ -408,7 +429,6 @@ export default function DashboardPage() {
     const parsed = JSON.parse(raw);
     setUser(parsed);
 
-    // leer la fuente de login guardada por el login page (express|profesor|local)
     const src = localStorage.getItem('user_source') || parsed.source || null;
     setUserSource(src);
 
@@ -423,7 +443,6 @@ export default function DashboardPage() {
         const mTotal = mRes.data?.meta?.total ?? Number(mRes.headers['x-total-count'] || 0);
         setTotals({ propietarios: pTotal, mascotas: mTotal });
 
-        // obtener primeros propietarios para selector (lim 50)
         const listRes = await expressApi.get('/propietarios?page=1&limit=50');
         const list = listRes.data?.data || listRes.data || [];
         setPropietariosList(list);
@@ -454,14 +473,11 @@ export default function DashboardPage() {
     setTotals(t => ({ ...t, mascotas: t.mascotas + 1 }));
   };
 
-  // callback cuando perfil se actualiza (ProfileModal)
   const handleProfileUpdated = (updatedUser) => {
     setUser(updatedUser);
-    // ya guardamos en localStorage desde el modal, pero reforzamos
     localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
-  // permiso UI: solo usuarios que iniciaron por 'express' pueden ver/abrir el modal
   const canEditProfile = userSource === 'express';
 
   return (
@@ -480,7 +496,6 @@ export default function DashboardPage() {
           <div style={{ fontWeight:700 }}>{user.nombre || user.email}</div>
           <div className="small-muted">Rol: <strong style={{ color: isAdmin ? 'var(--accent-2)' : 'var(--subtext)' }}>{user.role}</strong></div>
 
-          {/* BOTÓN para abrir modal Perfil (debajo del role) -> solo si user_source === 'express' */}
           {canEditProfile ? (
             <div style={{ marginTop: 8 }}>
               <button className="btn-ghost" onClick={() => setShowProfileModal(true)} style={{ padding: '7px 10px' }}>Editar perfil</button>
@@ -493,7 +508,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Controles - separados en View / Create */}
       <div style={{ display:'flex', gap:16, marginTop:16, flexWrap:'wrap', alignItems:'center' }}>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           <div style={{ fontWeight:700, color:'var(--subtext)', marginRight:8 }}>Vistas</div>
@@ -531,13 +545,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Modales */}
       {canEditProfile && showProfileModal && <ProfileModal userCurrent={user} onClose={() => setShowProfileModal(false)} onUpdated={handleProfileUpdated} />}
       {showAdminModal && <CreateAdminModal onClose={()=>setShowAdminModal(false)} onCreated={(n)=>console.log('Admin creado', n)} />}
       {showPropModal && <CreatePropModal onClose={()=>setShowPropModal(false)} onCreated={onPropCreated} />}
       {showMascotaModal && <CreateMascotaModal onClose={()=>setShowMascotaModal(false)} propietarios={propietariosList} onCreated={onMascotaCreated} />}
 
-      {/* Botón logout fijo */}
       <div className="logout-fixed">
         <button className="btn btn-danger" onClick={logout}>Cerrar sesión</button>
       </div>
