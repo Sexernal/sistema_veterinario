@@ -454,4 +454,4 @@ export default function MascotasPage() {
       </div>
     </div>
   );
-}
+} 

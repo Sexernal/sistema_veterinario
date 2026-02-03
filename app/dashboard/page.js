@@ -408,6 +408,182 @@ function ProfileModal({ onClose, userCurrent, onUpdated }) {
   );
 }
 
+/* --------------------- CreateCitaModal (nuevo) --------------------- */
+function CreateCitaModal({ onClose, propietarios = [], onCreated }) {
+  const [propietarioId, setPropietarioId] = useState(propietarios[0]?.id || '');
+  const [mascotas, setMascotas] = useState([]);
+  const [mascotaId, setMascotaId] = useState('');
+  const [veterinarios, setVeterinarios] = useState([]);
+  const [veterinarioId, setVeterinarioId] = useState('');
+  const [fechaHora, setFechaHora] = useState(''); // datetime-local value: "YYYY-MM-DDTHH:MM"
+  const [duracion, setDuracion] = useState(30);
+  const [tipo, setTipo] = useState('consulta general');
+  const [motivo, setMotivo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState([]);
+
+  useEffect(() => {
+    if (propietarios.length && !propietarioId) {
+      setPropietarioId(propietarios[0].id);
+    }
+  }, [propietarios]);
+
+  useEffect(() => {
+    // fetch mascotas y veterinarios once modal opens or propietario changes
+    const fetchData = async () => {
+      try {
+        // mascotas: pedir lista amplia y filtrar por owner_id (API lista mascotas)
+        const [mRes, uRes] = await Promise.all([
+          expressApi.get('/mascotas?page=1&limit=500'),
+          expressApi.get('/users?page=1&limit=200') // traer usuarios y filtrar admins
+        ]);
+        const allPets = mRes.data?.data || [];
+        setMascotas(allPets.filter(p => String(p.owner_id) === String(propietarioId) || String(p.propietario_id) === String(propietarioId)));
+        const users = uRes.data?.data || [];
+        const vets = users.filter(u => (u.role || '').toLowerCase() === 'admin');
+        setVeterinarios(vets);
+      } catch (err) {
+        console.warn('No se pudieron cargar mascotas/veterinarios', err?.message || err);
+      }
+    };
+
+    fetchData();
+  }, [propietarioId]);
+
+  useEffect(() => {
+    // reset mascota selection when propietario changes
+    setMascotaId('');
+  }, [propietarioId]);
+
+  const validate = () => {
+    const e = [];
+    if (!propietarioId) e.push('Propietario requerido.');
+    if (!mascotaId) e.push('Mascota requerida.');
+    if (!fechaHora) e.push('Fecha y hora requeridas.');
+    // validate datetime format: simple
+    if (fechaHora && isNaN(new Date(fechaHora).getTime())) e.push('Fecha/hora inválida.');
+    if (!duracion || Number(duracion) <= 0) e.push('Duración inválida.');
+    setErrors(e);
+    return e.length === 0;
+  };
+
+  function toSQLDatetime(dtLocal) {
+    // dtLocal is "YYYY-MM-DDTHH:MM" -> convert to "YYYY-MM-DD HH:MM:SS"
+    if (!dtLocal) return null;
+    const d = new Date(dtLocal);
+    if (isNaN(d.getTime())) return null;
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  const submit = async (ev) => {
+    ev?.preventDefault();
+    setErrors([]);
+    if (!validate()) return;
+    setLoading(true);
+    try {
+      const payload = {
+        mascota_id: Number(mascotaId),
+        propietario_id: Number(propietarioId),
+        veterinario_id: veterinarioId ? Number(veterinarioId) : null,
+        tipo_consulta: tipo,
+        motivo: motivo || null,
+        fecha_inicio: toSQLDatetime(fechaHora),
+        duracion_min: Number(duracion)
+      };
+
+      const res = await expressApi.post('/citas', payload);
+      const created = res.data?.data || res.data;
+      onCreated && onCreated(created);
+      alert('Cita creada correctamente');
+      onClose();
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        alert(err.response.data?.message || 'Conflicto: cita solapada');
+      } else {
+        const msg = err?.response?.data?.message || err.message || 'Error creando cita';
+        setErrors([msg]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal card" style={{ maxWidth:720 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div className="title">Crear cita</div>
+            <div className="subtitle">Agenda una cita para una mascota</div>
+          </div>
+          <button className="btn-ghost" onClick={onClose}>✕</button>
+        </div>
+
+        <form onSubmit={submit} style={{ marginTop:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap:8 }}>
+            <label>Propietario
+              <select className="input" value={propietarioId} onChange={e=>setPropietarioId(e.target.value)}>
+                <option value="">Selecciona propietario</option>
+                {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.email}</option>)}
+              </select>
+            </label>
+
+            <label>Mascota
+              <select className="input" value={mascotaId} onChange={e=>setMascotaId(e.target.value)}>
+                <option value="">Selecciona mascota</option>
+                {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} — {m.especie || m.raza || ''}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap:8, marginTop:8 }}>
+            <label>Veterinario (opcional)
+              <select className="input" value={veterinarioId} onChange={e=>setVeterinarioId(e.target.value)}>
+                <option value="">-- Ninguno --</option>
+                {veterinarios.map(v => <option key={v.id} value={v.id}>{v.nombre} — {v.email}</option>)}
+              </select>
+            </label>
+
+            <label>Tipo de consulta
+              <select className="input" value={tipo} onChange={e=>setTipo(e.target.value)}>
+                <option value="consulta general">Consulta general</option>
+                <option value="vacunacion">Vacunación</option>
+                <option value="urgencia">Urgencia</option>
+                <option value="cirugia">Cirugía</option>
+                <option value="peluqueria">Peluquería</option>
+                <option value="control">Control</option>
+                <option value="desparacitacion">Desparasitación</option>
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap:8, marginTop:8 }}>
+            <label>Fecha y hora
+              <input className="input" type="datetime-local" value={fechaHora} onChange={e=>setFechaHora(e.target.value)} />
+            </label>
+
+            <label>Duración (min)
+              <input className="input" type="number" min={5} value={duracion} onChange={e=>setDuracion(e.target.value)} />
+            </label>
+          </div>
+
+          <label style={{ marginTop:8 }}>Motivo (opcional)
+            <textarea className="input" rows={3} value={motivo} onChange={e=>setMotivo(e.target.value)} />
+          </label>
+
+          {errors.length>0 && (<div style={{ marginTop:10, color:'crimson' }}><ul>{errors.map((x,i)=><li key={i}>{x}</li>)}</ul></div>)}
+
+          <div style={{ display:'flex', gap:8, marginTop:12 }}>
+            <button className="btn" type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Crear cita'}</button>
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------- Dashboard principal (incluye todo) --------------------- */
 export default function DashboardPage() {
   const router = useRouter();
@@ -420,6 +596,9 @@ export default function DashboardPage() {
   const [showPropModal, setShowPropModal] = useState(false);
   const [showMascotaModal, setShowMascotaModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // nuevo: modal de citas
+  const [showCitaModal, setShowCitaModal] = useState(false);
 
   const [propietariosList, setPropietariosList] = useState([]);
 
@@ -473,6 +652,11 @@ export default function DashboardPage() {
     setTotals(t => ({ ...t, mascotas: t.mascotas + 1 }));
   };
 
+  const onCitaCreated = (newCita) => {
+    // puedes manejar notificaciones o refrescar métricas si deseas
+    console.log('Cita creada', newCita);
+  };
+
   const handleProfileUpdated = (updatedUser) => {
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -513,6 +697,7 @@ export default function DashboardPage() {
           <div style={{ fontWeight:700, color:'var(--subtext)', marginRight:8 }}>Vistas</div>
           <button className="btn" onClick={() => { if(isAdmin) router.push('/propietarios'); else alert('Acceso denegado: solo admins'); }}>Ver propietarios</button>
           <button className="btn" onClick={() => { if(isAdmin) router.push('/mascotas'); else alert('Acceso denegado: solo admins'); }}>Ver mascotas</button>
+          <button className="btn" onClick={() => { if(isAdmin) router.push('/citas'); else alert('Acceso denegado: solo admins'); }}>Ver citas</button>
         </div>
 
         <div style={{ width:1, height:36, background:'rgba(255,255,255,0.03)' }} />
@@ -521,6 +706,7 @@ export default function DashboardPage() {
           <div style={{ fontWeight:700, color:'var(--subtext)', marginRight:8 }}>Acciones</div>
           <button className="btn" onClick={() => isAdmin ? setShowPropModal(true) : alert('Acceso denegado: solo admins')}>Crear propietario</button>
           <button className="btn" onClick={() => isAdmin ? setShowMascotaModal(true) : alert('Acceso denegado: solo admins')}>Crear mascota</button>
+          <button className="btn" onClick={() => isAdmin ? setShowCitaModal(true) : alert('Acceso denegado: solo admins')}>Crear cita</button>
           <button className="btn-success" onClick={() => isAdmin ? setShowAdminModal(true) : alert('Acceso denegado: solo admins')}>Crear administrador</button>
         </div>
       </div>
@@ -549,6 +735,7 @@ export default function DashboardPage() {
       {showAdminModal && <CreateAdminModal onClose={()=>setShowAdminModal(false)} onCreated={(n)=>console.log('Admin creado', n)} />}
       {showPropModal && <CreatePropModal onClose={()=>setShowPropModal(false)} onCreated={onPropCreated} />}
       {showMascotaModal && <CreateMascotaModal onClose={()=>setShowMascotaModal(false)} propietarios={propietariosList} onCreated={onMascotaCreated} />}
+      {showCitaModal && <CreateCitaModal onClose={()=>setShowCitaModal(false)} propietarios={propietariosList} onCreated={onCitaCreated} />}
 
       <div className="logout-fixed">
         <button className="btn btn-danger" onClick={logout}>Cerrar sesión</button>
