@@ -1,6 +1,7 @@
+// app/propietarios/page.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import expressApi from "../../lib/expressApi";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +18,9 @@ function MedicalModal({ onClose, pet, onUploaded }) {
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const [detail, setDetail] = useState(null);
 
+  // referencia al input file para poder resetearlo
+  const fileInputRef = useRef(null);
+
   useEffect(() => { if (pet) fetchRecords(); }, [pet]);
 
   const fetchRecords = async () => {
@@ -31,7 +35,20 @@ function MedicalModal({ onClose, pet, onUploaded }) {
     } finally { setLoading(false); }
   };
 
-  const handleFileChange = (e) => setFile(e.target.files?.[0] || null);
+  const handleFileChange = (e) => {
+    setFile(e.target.files?.[0] || null);
+  };
+
+  // helper para construir URL completa al archivo (dev / prod)
+  const makeFileUrl = (pathOrUrl) => {
+    if (!pathOrUrl) return '';
+    // si ya es una URL absoluta, devolverla
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    const API_BASE = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:3001';
+    // si pathOrUrl empieza con '/', evitar duplicar barra
+    if (pathOrUrl.startsWith('/')) return `${API_BASE}${pathOrUrl}`;
+    return `${API_BASE}/${pathOrUrl}`;
+  };
 
   const uploadRecord = async (e) => {
     e?.preventDefault();
@@ -47,7 +64,15 @@ function MedicalModal({ onClose, pet, onUploaded }) {
       if (file) fd.append('file', file); // opcional
       const res = await expressApi.post('/medical-records', fd, { headers: { 'Content-Type': 'multipart/form-data' }});
       const created = res.data?.data || res.data;
-      setFile(null); setTipo(''); setNota(''); setPeso(''); setFecha('');
+
+      // reset campos y tambien el input file visual
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTipo('');
+      setNota('');
+      setPeso('');
+      setFecha('');
+
       onUploaded && onUploaded(created);
       fetchRecords();
     } catch (err) {
@@ -67,17 +92,27 @@ function MedicalModal({ onClose, pet, onUploaded }) {
   };
 
   const renderPreviewLink = (r) => {
-    const url = r.filepath || r.url || '';
-    if (!url) return null;
-    const ext = (url.split('.').pop() || '').toLowerCase();
+    const raw = r.filepath || r.url || '';
+    if (!raw) return null;
+    const full = makeFileUrl(raw);
+    const ext = (raw.split('.').pop() || '').toLowerCase();
     const isImage = ['png','jpg','jpeg','webp','gif'].includes(ext);
     return (
       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-        <a className="btn" href={url} target="_blank" rel="noreferrer">Abrir archivo</a>
-        <a className="btn-ghost" href={url} target="_blank" rel="noreferrer" download>Descargar</a>
-        {isImage && <button className="btn-ghost" onClick={()=>setImagePreviewUrl(url)}>Ver imagen</button>}
+        <a className="btn" href={full} target="_blank" rel="noreferrer">Abrir archivo</a>
+        <a className="btn-ghost" href={full} target="_blank" rel="noreferrer" download>Descargar</a>
+        {isImage && <button className="btn-ghost" onClick={()=>setImagePreviewUrl(full)}>Ver imagen</button>}
       </div>
     );
+  };
+
+  const handleClear = () => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setTipo('');
+    setNota('');
+    setPeso('');
+    setFecha('');
   };
 
   return (
@@ -95,22 +130,22 @@ function MedicalModal({ onClose, pet, onUploaded }) {
           <div style={{ padding:16, overflowY:'auto' }}>
             <form onSubmit={uploadRecord}>
               <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap:8 }}>
-                <label>Tipo <input className="input" value={tipo} onChange={e=>setTipo(e.target.value)} /></label>
+                <label>Tipo (ej: radiografía, análisis)<input className="input" value={tipo} onChange={e=>setTipo(e.target.value)} /></label>
                 <label>Peso (kg) <input className="input" value={peso} onChange={e=>setPeso(e.target.value)} /></label>
               </div>
 
               <label style={{ marginTop:8 }}>Fecha <input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} /></label>
 
-              <label style={{ marginTop:8 }}>Archivo (PDF / Imagen)
-                <input className="input" type="file" accept=".pdf,image/*" onChange={handleFileChange} />
-                <small style={{ color:'var(--subtext)' }}>Opcional — no es obligatorio subir archivo.</small>
+              <label style={{ marginTop:8 }}>Archivo (PDF / Imagen) <small style={{ color:'var(--subtext)' }}>Opcional - no es obligatorio subir archivo.</small>
+                {/* agregada la ref al input para poder resetearlo */}
+                <input ref={fileInputRef} className="input" type="file" accept=".pdf,image/*" onChange={handleFileChange} />
               </label>
 
               <label style={{ marginTop:8 }}>Nota <textarea className="input" rows={3} value={nota} onChange={e=>setNota(e.target.value)} /></label>
 
               <div style={{ display:'flex', gap:8, marginTop:12 }}>
                 <button className="btn" type="submit" disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir ficha'}</button>
-                <button type="button" className="btn-ghost" onClick={()=>{ setFile(null); setTipo(''); setNota(''); }}>Limpiar</button>
+                <button type="button" className="btn-ghost" onClick={handleClear}>Limpiar</button>
               </div>
             </form>
 
@@ -187,8 +222,8 @@ function MedicalModal({ onClose, pet, onUploaded }) {
 
               {detail.filepath && (
                 <div style={{ marginTop:12, display:'flex', gap:8 }}>
-                  <a className="btn" href={detail.filepath} target="_blank" rel="noreferrer">Abrir archivo</a>
-                  <a className="btn-ghost" href={detail.filepath} target="_blank" rel="noreferrer" download>Descargar</a>
+                  <a className="btn" href={makeFileUrl(detail.filepath)} target="_blank" rel="noreferrer">Abrir archivo</a>
+                  <a className="btn-ghost" href={makeFileUrl(detail.filepath)} target="_blank" rel="noreferrer" download>Descargar</a>
                 </div>
               )}
             </div>
@@ -307,7 +342,7 @@ function CreateOwnerModal({ onClose, onCreated, initial = null }) {
           <label style={{ display:'block', marginTop:8 }}>
             <div style={{ fontSize:13, fontWeight:600 }}>Teléfono</div>
             <input className="input" inputMode="tel" value={form.telefono} onChange={(e)=>onTelefonoChange(e.target.value)} placeholder="+506 8888-9999" required />
-            <small style={{ color: 'var(--subtext)' }}>Permite + - ( ) . y espacios; mínimo 7 dígitos.</small>
+            <small style={{ color: 'var(--subtext)' }}>mínimo 8 dígitos.</small>
           </label>
 
           <label style={{ display:'block', marginTop:8 }}>
@@ -318,9 +353,9 @@ function CreateOwnerModal({ onClose, onCreated, initial = null }) {
           <hr style={{ margin:'12px 0' }} />
 
           <label style={{ display:'block', marginTop:8 }}>
-            <div style={{ fontSize:13, fontWeight:600 }}>Contraseña (opcional)</div>
+            <div style={{ fontSize:13, fontWeight:600 }}>Contraseña</div>
             <input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Dejar vacío para no cambiar/crear contraseña" />
-            <small style={{ color:'var(--subtext)' }}>Si la añades, el propietario podrá iniciar sesión en la app con email+contraseña.</small>
+            <small style={{ color:'var(--subtext)' }}>Obligatoria si el propietario quiere tener una cuenta para iniciar sesión en la app mobile</small>
           </label>
 
           <label style={{ display:'block', marginTop:8 }}>
@@ -402,17 +437,17 @@ function CreatePetModal({ onClose, onCreated, owners = [], initial = null, openM
             <label>Nombre <input className="input" value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} required/></label>
             <label>Especie <input className="input" value={form.especie} onChange={e=>setForm({...form, especie:e.target.value})}/></label>
             <label>Raza <input className="input" value={form.raza} onChange={e=>setForm({...form, raza:e.target.value})}/></label>
-            <label>Edad <input className="input" type="number" value={form.edad} onChange={e=>setForm({...form, edad:e.target.value})}/></label>
+            <label>Edad (años)<input className="input" type="number" value={form.edad} onChange={e=>setForm({...form, edad:e.target.value})}/></label>
           </div>
 
-          <label style={{ marginTop:8 }}>Propietario
+          <label style={{ marginTop:8 }}>Propietario <small style={{ color: 'var(--subtext)' }}>Verifica bien el propietario</small>
             <select className="input" value={form.owner_id} onChange={e=>setForm({...form, owner_id:e.target.value})} required>
               <option value="">Selecciona propietario</option>
               {owners.map(o => <option key={o.id} value={o.id}>{o.nombre} — {o.email}</option>)}
             </select>
           </label>
 
-          <label style={{ marginTop:8 }}>Historial médico
+          <label style={{ marginTop:8 }}>Historial médico (nota breve)
             <textarea className="input" rows={3} value={form.historial_medico} onChange={e=>setForm({...form, historial_medico:e.target.value})}></textarea>
           </label>
 

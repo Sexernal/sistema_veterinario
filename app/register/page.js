@@ -1,11 +1,29 @@
+// app/register/page.js
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
 
 export default function RegisterPage() {
   const router = useRouter();
+
+  // --- AUTH GUARD
+  useEffect(() => {
+    const raw = localStorage.getItem("user");
+    if (!raw) return router.replace("/"); // no logeado -> ir al login ("/")
+    try {
+      const user = JSON.parse(raw);
+      if (user.role !== "admin") {
+        alert("Acceso denegado: sólo administradores pueden acceder.");
+        router.replace("/dashboard");
+      }
+    } catch (e) {
+      // formato inválido -> forzar al login
+      router.replace("/");
+    }
+  }, [router]);
+
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");

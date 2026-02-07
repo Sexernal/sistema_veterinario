@@ -96,14 +96,14 @@ export default function LoginPage() {
         <div style={logoStyle}>
           <div style={pawStyle}>🐾</div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#e6eef8" }}>VetCare</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#e6eef8" }}>VetCare Clinic</div>
             <div style={{ color: "#9fb0c8", fontSize: 13 }}>Sistema de gestión veterinaria</div>
           </div>
         </div>
 
         <h2 style={{ marginTop: 12, marginBottom: 4, color: "#e6eef8" }}>Iniciar sesión</h2>
         <p style={{ marginTop: 0, marginBottom: 12, color: "#9fb0c8" }}>
-          Inicia sesión con tu cuenta de admin (Express API local).
+          Inicia sesión con tu cuenta de doctor o recepcionista.
         </p>
 
         <form onSubmit={handleSubmit} aria-label="form-login">
@@ -126,7 +126,7 @@ export default function LoginPage() {
 
         <div style={{ textAlign: "center", marginTop: 12 }}>
           <div style={{ color: "#9fb0c8", fontSize: 13 }}>
-            Las cuentas admin deben ser creadas por un administrador desde el dashboard.
+            Las cuentas admin (doctor) deben ser creadas por un administrador desde el dashboard.
           </div>
         </div>
       </div>

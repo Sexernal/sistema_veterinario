@@ -1,6 +1,7 @@
+// app/mascotas/page.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import expressApi from "../../lib/expressApi";
 import { useRouter } from "next/navigation";
 
@@ -59,12 +60,12 @@ function PetModalSimple({ onClose, onCreated, owners = [], initial = null, openM
             <label>Nombre <input className="input" value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} required /></label>
             <label>Especie <input className="input" value={form.especie} onChange={e=>setForm({...form, especie:e.target.value})} /></label>
             <label>Raza <input className="input" value={form.raza} onChange={e=>setForm({...form, raza:e.target.value})} /></label>
-            <label>Edad <input className="input" type="number" value={form.edad} onChange={e=>setForm({...form, edad:e.target.value})} /></label>
+            <label>Edad (años)<input className="input" type="number" value={form.edad} onChange={e=>setForm({...form, edad:e.target.value})} /></label>
           </div>
 
-          <label style={{ marginTop:8 }}>Propietario
+          <label style={{ marginTop:8 }}>Propietario <small style={{ color: 'var(--subtext)' }}>Verifica bien el propietario</small>
             <select className="input" value={form.owner_id} onChange={e=>setForm({...form, owner_id:e.target.value})} required>
-              <option value="">Selecciona propietario</option>
+              <option value="">Selecciona propietario </option>
               {owners.map(o => <option key={o.id} value={o.id}>{o.nombre} — {o.email}</option>)}
             </select>
           </label>
@@ -86,7 +87,7 @@ function PetModalSimple({ onClose, onCreated, owners = [], initial = null, openM
 }
 
 /* ----------------- RecordDetailModal: muestra ficha completa -------------- */
-function RecordDetailModal({ record, onClose }) {
+function RecordDetailModal({ record, onClose, makeFileUrl }) {
   if (!record) return null;
 
   const fechaStr = record.fecha_display || (record.fecha ? new Date(record.fecha).toLocaleString() : '-');
@@ -121,8 +122,8 @@ function RecordDetailModal({ record, onClose }) {
 
           {record.filepath && (
             <div style={{ marginTop:12, display:'flex', gap:8 }}>
-              <a className="btn" href={record.filepath} target="_blank" rel="noreferrer">Abrir archivo</a>
-              <a className="btn-ghost" href={record.filepath} target="_blank" rel="noreferrer" download>Descargar</a>
+              <a className="btn" href={makeFileUrl(record.filepath)} target="_blank" rel="noreferrer">Abrir archivo</a>
+              <a className="btn-ghost" href={makeFileUrl(record.filepath)} target="_blank" rel="noreferrer" download>Descargar</a>
             </div>
           )}
         </div>
@@ -143,6 +144,9 @@ function MedicalModal({ onClose, pet, onUploaded }) {
   const [fecha, setFecha] = useState('');
   const [detail, setDetail] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+
+  // ref para resetear el input file
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!pet) return;
@@ -165,6 +169,15 @@ function MedicalModal({ onClose, pet, onUploaded }) {
     setFile(e.target.files?.[0] || null);
   };
 
+  // helper para construir URL completa al archivo (dev / prod)
+  const makeFileUrl = (pathOrUrl) => {
+    if (!pathOrUrl) return '';
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    const API_BASE = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:3001';
+    if (pathOrUrl.startsWith('/')) return `${API_BASE}${pathOrUrl}`;
+    return `${API_BASE}/${pathOrUrl}`;
+  };
+
   // Ahora archivo es OPCIONAL
   const uploadRecord = async (e) => {
     e?.preventDefault();
@@ -184,7 +197,15 @@ function MedicalModal({ onClose, pet, onUploaded }) {
       });
 
       const created = res.data?.data || res.data;
-      setFile(null); setTipo(''); setNota(''); setPeso(''); setFecha('');
+
+      // reset campos y el input file visible
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTipo('');
+      setNota('');
+      setPeso('');
+      setFecha('');
+
       onUploaded && onUploaded(created);
       fetchRecords();
     } catch (err) {
@@ -204,17 +225,27 @@ function MedicalModal({ onClose, pet, onUploaded }) {
   };
 
   const renderPreviewLink = (r) => {
-    const url = r.filepath || '';
-    if (!url) return null;
-    const ext = (url.split('.').pop() || '').toLowerCase();
+    const raw = r.filepath || r.url || '';
+    if (!raw) return null;
+    const full = makeFileUrl(raw);
+    const ext = (raw.split('.').pop() || '').toLowerCase();
     const isImage = ['png','jpg','jpeg','webp','gif'].includes(ext);
     return (
       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-        <a className="btn" href={url} target="_blank" rel="noreferrer">Abrir archivo</a>
-        <a className="btn-ghost" href={url} target="_blank" rel="noreferrer" download>Descargar</a>
-        {isImage && <button className="btn-ghost" onClick={()=>setImagePreviewUrl(url)}>Ver imagen</button>}
+        <a className="btn" href={full} target="_blank" rel="noreferrer">Abrir archivo</a>
+        <a className="btn-ghost" href={full} target="_blank" rel="noreferrer" download>Descargar</a>
+        {isImage && <button className="btn-ghost" onClick={()=>setImagePreviewUrl(full)}>Ver imagen</button>}
       </div>
     );
+  };
+
+  const handleClear = () => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setTipo('');
+    setNota('');
+    setPeso('');
+    setFecha('');
   };
 
   return (
@@ -238,8 +269,8 @@ function MedicalModal({ onClose, pet, onUploaded }) {
 
               <label style={{ marginTop:8 }}>Fecha <input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} /></label>
 
-              <label style={{ marginTop:8 }}>Archivo (PDF / Imagen)
-                <input className="input" type="file" accept=".pdf,image/*" onChange={handleFileChange} />
+              <label style={{ marginTop:8 }}>Archivo (PDF / Imagen) <small style={{ color:'var(--subtext)' }}>Opcional - no es obligatorio subir archivo.</small>
+                <input ref={fileInputRef} className="input" type="file" accept=".pdf,image/*" onChange={handleFileChange} />
                 <small style={{ color:'var(--subtext)' }}>Opcional — no es obligatorio subir archivo.</small>
               </label>
 
@@ -249,7 +280,7 @@ function MedicalModal({ onClose, pet, onUploaded }) {
 
               <div style={{ display:'flex', gap:8, marginTop:12 }}>
                 <button className="btn" type="submit" disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir ficha'}</button>
-                <button type="button" className="btn-ghost" onClick={()=>{ setFile(null); setTipo(''); setNota(''); setPeso(''); setFecha(''); }}>Limpiar</button>
+                <button type="button" className="btn-ghost" onClick={handleClear}>Limpiar</button>
               </div>
             </form>
 
@@ -297,7 +328,7 @@ function MedicalModal({ onClose, pet, onUploaded }) {
         </div>
       </div>
 
-      {detail && <RecordDetailModal record={detail} onClose={()=>setDetail(null)} />}
+      {detail && <RecordDetailModal record={detail} onClose={()=>setDetail(null)} makeFileUrl={makeFileUrl} />}
 
       {imagePreviewUrl && (
         <div className="modal-overlay" onClick={()=>setImagePreviewUrl(null)} style={{ cursor:'pointer' }}>
@@ -454,4 +485,4 @@ export default function MascotasPage() {
       </div>
     </div>
   );
-} 
+}

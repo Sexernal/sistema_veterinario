@@ -1,30 +1,33 @@
-// app/citas/page.js
+// app/citas/page.js 
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import expressApi from "../../lib/expressApi";
 import { useRouter } from "next/navigation";
 
-/* ----------------- CreateCitaModal (similar al que ya tienes en dashboard) ----------------- */
+/* ----------------- CreateCitaModal (nuevo: usa backend /citas/slots si está disponible) ----------------- */
 function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
   const [propietarioId, setPropietarioId] = useState(propietarios[0]?.id || "");
   const [mascotas, setMascotas] = useState([]);
   const [mascotaId, setMascotaId] = useState("");
   const [veterinarios, setVeterinarios] = useState([]);
-  const [veterinarioId, setVeterinarioId] = useState("");
-  const [fechaHora, setFechaHora] = useState("");
+  const [veterinarioId, setVeterinarioId] = useState(""); // opcional
+  const [fecha, setFecha] = useState(""); // YYYY-MM-DD
+  const [fechaHora, setFechaHora] = useState(""); // 'YYYY-MM-DDTHH:MM'
   const [duracion, setDuracion] = useState(30);
   const [tipo, setTipo] = useState("consulta general");
   const [motivo, setMotivo] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState([]);
 
+  // today string para min en date inputs
+  const todayDate = new Date().toISOString().slice(0,10);
+
   useEffect(() => {
     if (propietarios.length && !propietarioId) setPropietarioId(propietarios[0].id);
   }, [propietarios]);
 
   useEffect(() => {
-    // traer mascotas y usuarios (filtrar admins para veterinarios)
     const fetch = async () => {
       try {
         const [mRes, uRes] = await Promise.all([
@@ -44,6 +47,174 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     setVeterinarioId("");
   }, [propietarioId]);
 
+  // Mapeo duraciones (mismos valores que en backend)
+  const getDurationForTipo = (t) => {
+    const map = {
+      "consulta general": 30,
+      "vacunacion": 20,
+      "urgencia": 60,
+      "cirugia": 120,
+      "peluqueria": 45,
+      "control": 20,
+      "desparacitacion": 15
+    };
+    return map[(t || "").toLowerCase()] || 30;
+  };
+
+  // Helpers tiempo
+  const parseTimeToMinutes = (hhmm) => {
+    const [hh, mm] = hhmm.split(":").map(Number);
+    return hh * 60 + mm;
+  };
+  const minutesToTimeStr = (m) => {
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  };
+
+  const overlaps = (aStart, aEnd, bStart, bEnd) => (aStart < bEnd && bStart < aEnd);
+
+  // Fallback: generar slots en frontend si backend no responde
+  const generateSlotsLocal = (dateStr, tipoStr, vetList, existingCitas) => {
+    if (!dateStr || !tipoStr) return { slotsByVet: {}, durationMin: 0 };
+    const durationMin = getDurationForTipo(tipoStr);
+
+    // Ventanas (misma regla simplificada que backend)
+    const getWindowsForTipo = (t) => {
+      const low = (t || "").toLowerCase();
+      switch (low) {
+        case "vacunacion": return [{ from: "08:00", to: "12:30" }, { from: "14:00", to: "17:00" }];
+        case "cirugia": return [{ from: "08:00", to: "12:00" }];
+        case "peluqueria": return [{ from: "09:00", to: "16:00" }];
+        case "urgencia": return [{ from: "07:00", to: "17:00" }];
+        case "control":
+        case "desparacitacion": return [{ from: "07:00", to: "17:00" }];
+        default: return [{ from: "07:00", to: "17:00" }];
+      }
+    };
+
+    const CLINIC_OPEN = "07:00";
+    const CLINIC_CLOSE = "17:00";
+    const step = 15;
+
+    const citasByVet = {};
+    for (const c of existingCitas) {
+      const vid = c.veterinario_id ? String(c.veterinario_id) : "null";
+      if (!citasByVet[vid]) citasByVet[vid] = [];
+      const start = new Date(c.fecha_inicio || c.fecha || "");
+      const end = new Date(start.getTime() + Number(c.duracion_min || c.duracion || 0) * 60000);
+      citasByVet[vid].push({ start, end });
+    }
+
+    const slotsByVet = {};
+    const windows = getWindowsForTipo(tipoStr);
+
+    for (const vet of vetList) {
+      const vid = String(vet.id);
+      slotsByVet[vid] = [];
+      for (const w of windows) {
+        const windowFromMin = Math.max(parseTimeToMinutes(CLINIC_OPEN), parseTimeToMinutes(w.from));
+        const windowToMin = Math.min(parseTimeToMinutes(CLINIC_CLOSE), parseTimeToMinutes(w.to));
+        const lastStartMin = windowToMin - durationMin;
+        for (let t = windowFromMin; t <= lastStartMin; t += step) {
+          const timeStr = minutesToTimeStr(t);
+          const start = new Date(`${dateStr}T${timeStr}:00`);
+          if (isNaN(start.getTime())) continue;
+          const end = new Date(start.getTime() + durationMin * 60000);
+          const vetCitas = citasByVet[vid] || [];
+          let conflict = false;
+          for (const c of vetCitas) {
+            if (overlaps(start.getTime(), end.getTime(), c.start.getTime(), c.end.getTime())) {
+              conflict = true;
+              break;
+            }
+          }
+          if (!conflict) {
+            slotsByVet[vid].push({ start, timeStr, startIsoLocal: `${dateStr}T${timeStr}` });
+          }
+        }
+      }
+      slotsByVet[vid].sort((a,b)=> a.start.getTime() - b.start.getTime());
+    }
+
+    return { slotsByVet, durationMin };
+  };
+
+  // slots por vet (desde backend o generado local)
+  const [slotsByVet, setSlotsByVet] = useState({});
+  const [isGeneratingSlots, setIsGeneratingSlots] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      setSlotsByVet({});
+      if (!fecha) return;
+      const dObj = new Date(`${fecha}T00:00:00`);
+      if (isNaN(dObj.getTime())) return;
+      const day = dObj.getDay();
+      // bloquear domingos
+      if (day === 0) {
+        setErrors([ "La clínica está cerrada los domingos. Si es una urgencia, llame por teléfono." ]);
+        setFecha("");
+        return;
+      } else {
+        setErrors([]);
+      }
+      // bloquear fechas en el pasado
+      const todayStart = new Date();
+      todayStart.setHours(0,0,0,0);
+      if (dObj < todayStart) {
+        setErrors([ "No se pueden agendar citas en días pasados." ]);
+        setFecha("");
+        return;
+      }
+
+      setIsGeneratingSlots(true);
+      try {
+        // Intentamos pedir slots al backend (preferible)
+        const q = `/citas/slots?date=${encodeURIComponent(fecha)}&tipo=${encodeURIComponent(tipo)}${veterinarioId ? `&veterinario_id=${encodeURIComponent(veterinarioId)}` : ''}`;
+        let usedSlotsByVet = {};
+        try {
+          const res = await expressApi.get(q);
+          if (res.data && res.data.success && res.data.data && res.data.data.slotsByVet) {
+            usedSlotsByVet = res.data.data.slotsByVet;
+            // backend devuelve { slotsByVet: { vetId: [ { timeStr, startIsoLocal, ... } ] } }
+          } else {
+            // fallback: obtener citas y calcular localmente
+            const cRes = await expressApi.get(`/citas?page=1&limit=1000`);
+            const all = cRes.data?.data || [];
+            const vetList = veterinarioId ? (veterinarios.filter(v => String(v.id) === String(veterinarioId))) : veterinarios;
+            const { slotsByVet: sByV } = generateSlotsLocal(fecha, tipo, vetList, all);
+            usedSlotsByVet = sByV;
+          }
+        } catch (err) {
+          // error en backend slots => fallback local
+          const cRes = await expressApi.get(`/citas?page=1&limit=1000`);
+          const all = cRes.data?.data || [];
+          const vetList = veterinarioId ? (veterinarios.filter(v => String(v.id) === String(veterinarioId))) : veterinarios;
+          const { slotsByVet: sByV } = generateSlotsLocal(fecha, tipo, vetList, all);
+          usedSlotsByVet = sByV;
+        }
+
+        if (!mounted) return;
+        setSlotsByVet(usedSlotsByVet);
+      } catch (err) {
+        console.error("Error generando slots", err);
+        if (mounted) setSlotsByVet({});
+      } finally {
+        if (mounted) setIsGeneratingSlots(false);
+      }
+    };
+    run();
+    return () => { mounted = false; };
+  }, [fecha, tipo, veterinarioId, veterinarios]);
+
+  useEffect(()=> {
+    const d = getDurationForTipo(tipo);
+    setDuracion(d);
+    setFechaHora("");
+  }, [tipo]);
+
   function toSQLDatetime(dtLocal) {
     if (!dtLocal) return null;
     const d = new Date(dtLocal);
@@ -56,9 +227,18 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     const e = [];
     if (!propietarioId) e.push("Propietario requerido.");
     if (!mascotaId) e.push("Mascota requerida.");
-    if (!fechaHora) e.push("Fecha y hora requeridas.");
-    if (fechaHora && isNaN(new Date(fechaHora).getTime())) e.push("Fecha/hora inválida.");
+    if (!fechaHora) e.push("Debe seleccionar una franja horaria disponible.");
     if (!duracion || Number(duracion) <= 0) e.push("Duración inválida.");
+    // bloquear slots en el pasado
+    if (fechaHora) {
+      const dt = new Date(fechaHora);
+      if (isNaN(dt.getTime())) {
+        e.push("Fecha/hora inválida.");
+      } else {
+        const now = new Date();
+        if (dt.getTime() < now.getTime()) e.push("No se pueden agendar citas en el pasado.");
+      }
+    }
     setErrors(e);
     return e.length === 0;
   };
@@ -84,7 +264,7 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
       onClose();
     } catch (err) {
       if (err?.response?.status === 409) {
-        setErrors([err.response.data?.message || "Conflicto: cita solapada"]);
+        setErrors([err.response.data?.message || "Conflicto: cita solapada (backend)"]);
       } else {
         setErrors([err?.response?.data?.message || err.message || "Error creando cita"]);
       }
@@ -93,85 +273,156 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     }
   };
 
+  // Botones de slot estilo compacto
+  const renderSlotsForVet = (vet) => {
+    if (!vet) return null;
+    const vid = String(vet.id);
+    const list = slotsByVet[vid] || [];
+    if (!list.length) return <div className="small-muted">Sin horarios disponibles para este veterinario / tipo</div>;
+    return (
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+        {list.map(s => (
+          <button
+            key={s.startIsoLocal}
+            className="btn-ghost"
+            onClick={()=> {
+              setFechaHora(s.startIsoLocal);
+              setDuracion(getDurationForTipo(tipo));
+            }}
+            style={{
+              borderRadius:8,
+              padding:'6px 8px',
+              fontSize:12,
+              minWidth:56,
+              textAlign:'center',
+              lineHeight:'18px'
+            }}
+          >
+            {s.timeStr}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="modal-overlay">
-      <div className="modal card" style={{ maxWidth:720 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div className="modal card" style={{ maxWidth:820, maxHeight:'82vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
           <div>
             <div className="title">Crear cita</div>
-            <div className="subtitle">Agenda una cita para una mascota</div>
+            <div className="subtitle">Selecciona fecha y luego una franja horaria disponible</div>
           </div>
           <button className="btn-ghost" onClick={onClose}>✕</button>
         </div>
 
-        <form onSubmit={submit} style={{ marginTop:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            <label>Propietario
-              <select className="input" value={propietarioId} onChange={e=>setPropietarioId(e.target.value)}>
-                <option value="">Selecciona propietario</option>
-                {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.email}</option>)}
-              </select>
+        <div style={{ padding:16, overflowY:'auto' }}>
+          <form onSubmit={submit}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <label>Propietario
+                <select className="input" value={propietarioId} onChange={e=>setPropietarioId(e.target.value)}>
+                  <option value="">Selecciona propietario</option>
+                  {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.email}</option>)}
+                </select>
+              </label>
+
+              <label>Mascota
+                <select className="input" value={mascotaId} onChange={e=>setMascotaId(e.target.value)}>
+                  <option value="">Selecciona mascota</option>
+                  {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} — {m.especie || m.raza || ''}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8 }}>
+              <label>Veterinario (opc)
+                <select className="input" value={veterinarioId} onChange={e=>setVeterinarioId(e.target.value)}>
+                  <option value="">-- Cualquiera --</option>
+                  {veterinarios.map(v => <option key={v.id} value={v.id}>{v.nombre} — {v.email}</option>)}
+                </select>
+              </label>
+
+              <label>Tipo de consulta
+                <select className="input" value={tipo} onChange={e=>setTipo(e.target.value)}>
+                  <option value="consulta general">Consulta general</option>
+                  <option value="vacunacion">Vacunación</option>
+                  <option value="urgencia">Urgencia</option>
+                  <option value="cirugia">Cirugía</option>
+                  <option value="peluqueria">Peluquería</option>
+                  <option value="control">Control</option>
+                  <option value="desparacitacion">Desparasitación</option>
+                </select>
+              </label>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8 }}>
+              <label>Fecha (no domingos)
+                <input className="input" type="date" value={fecha} min={todayDate} onChange={e=>setFecha(e.target.value)} />
+              </label>
+
+              <label>Duración (min)
+                <input className="input" type="number" min={5} value={duracion} onChange={e=>setDuracion(e.target.value)} disabled />
+                <small style={{ color:'var(--subtext)' }}>Se fija automáticamente por tipo</small>
+              </label>
+            </div>
+
+            <div style={{ marginTop:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, marginBottom:8 }}>Horarios disponibles</div>
+
+              {isGeneratingSlots ? <div className="card">Generando horarios...</div> : (
+                <div style={{ maxHeight: 300, overflowY: 'auto', paddingRight:8 }}>
+                  {veterinarioId ? (
+                    <div style={{ marginBottom:8 }}>
+                      <div style={{ fontWeight:700, marginBottom:6 }}>
+                        {(veterinarios.find(v=>String(v.id)===String(veterinarioId))?.nombre) || 'Veterinario'}
+                      </div>
+                      {renderSlotsForVet(veterinarios.find(v=>String(v.id)===String(veterinarioId)) || null)}
+                    </div>
+                  ) : (
+                    <div style={{ display:'grid', gap:12 }}>
+                      {veterinarios.length === 0 && <div className="small-muted">No hay veterinarios disponibles</div>}
+                      {veterinarios.map(v => (
+                        <div key={v.id} style={{ padding:8, borderRadius:8, border:'1px solid rgba(255,255,255,0.04)' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                            <div style={{ fontWeight:700 }}>{v.nombre} <small style={{ color:'var(--subtext)' }}>{v.email}</small></div>
+                          </div>
+                          {renderSlotsForVet(v)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginTop:10, color:'var(--subtext)' }}>
+                <small>Selecciona una fecha (lunes a sábado). Luego elige una franja horaria. Si no ves franjas disponibles revisa la lista de citas del día (pueden estar todas ocupadas).</small>
+              </div>
+            </div>
+
+            <label style={{ marginTop:8 }}>Motivo (opcional)
+              <textarea className="input" rows={3} value={motivo} onChange={e=>setMotivo(e.target.value)} />
             </label>
 
-            <label>Mascota
-              <select className="input" value={mascotaId} onChange={e=>setMascotaId(e.target.value)}>
-                <option value="">Selecciona mascota</option>
-                {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} — {m.especie || m.raza || ''}</option>)}
-              </select>
-            </label>
-          </div>
+            {errors.length>0 && <div style={{ marginTop:10, color:'crimson' }}><ul>{errors.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8 }}>
-            <label>Veterinario (opc)
-              <select className="input" value={veterinarioId} onChange={e=>setVeterinarioId(e.target.value)}>
-                <option value="">-- Ninguno --</option>
-                {veterinarios.map(v => <option key={v.id} value={v.id}>{v.nombre} — {v.email}</option>)}
-              </select>
-            </label>
-
-            <label>Tipo de consulta
-              <select className="input" value={tipo} onChange={e=>setTipo(e.target.value)}>
-                <option value="consulta general">Consulta general</option>
-                <option value="vacunacion">Vacunación</option>
-                <option value="urgencia">Urgencia</option>
-                <option value="cirugia">Cirugía</option>
-                <option value="peluqueria">Peluquería</option>
-                <option value="control">Control</option>
-                <option value="desparacitacion">Desparasitación</option>
-              </select>
-            </label>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8 }}>
-            <label>Fecha y hora
-              <input className="input" type="datetime-local" value={fechaHora} onChange={e=>setFechaHora(e.target.value)} />
-            </label>
-
-            <label>Duración (min)
-              <input className="input" type="number" min={5} value={duracion} onChange={e=>setDuracion(e.target.value)} />
-            </label>
-          </div>
-
-          <label style={{ marginTop:8 }}>Motivo (opcional)
-            <textarea className="input" rows={3} value={motivo} onChange={e=>setMotivo(e.target.value)} />
-          </label>
-
-          {errors.length>0 && <div style={{ marginTop:10, color:'crimson' }}><ul>{errors.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
-
-          <div style={{ display:'flex', gap:8, marginTop:12 }}>
-            <button className="btn" type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Crear cita'}</button>
-            <button className="btn-ghost" type="button" onClick={onClose}>Cancelar</button>
-          </div>
-        </form>
+            <div style={{ display:'flex', gap:8, marginTop:12 }}>
+              <button className="btn" type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Crear cita'}</button>
+              <button className="btn-ghost" type="button" onClick={onClose}>Cancelar</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ----------------- Detail modal ----------------- */
+/* ----------------- Detail modal (sin cambios funcionales) ----------------- */
 function CitaDetailModal({ cita, onClose, onUpdated }) {
   if (!cita) return null;
   const fechaStr = cita.fecha_inicio ? new Date(cita.fecha_inicio).toLocaleString() : '-';
+  const lowerEstado = (cita.estado || '').toLowerCase();
+  const isTerminal = lowerEstado === 'completada' || lowerEstado === 'cancelada';
+
   return (
     <div className="modal-overlay">
       <div className="modal card" style={{ maxWidth:720 }}>
@@ -199,30 +450,53 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
           </div>
 
           <div style={{ display:'flex', gap:8, marginTop:12 }}>
-            <button className="btn" onClick={async ()=>{
-              try {
-                await expressApi.patch(`/citas/${cita.id}/status`, { estado: 'confirmada' });
-                onUpdated && onUpdated();
-                onClose();
-              } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
-            }}>Confirmar</button>
+            <button
+              className="btn"
+              onClick={async ()=>{ 
+                if (isTerminal) return;
+                try {
+                  await expressApi.patch(`/citas/${cita.id}/status`, { estado: 'confirmada' });
+                  onUpdated && onUpdated();
+                  onClose();
+                } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
+              }}
+              disabled={isTerminal}
+            >
+              Confirmar
+            </button>
 
-            <button className="btn" onClick={async ()=>{
-              try {
-                await expressApi.patch(`/citas/${cita.id}/status`, { estado: 'completada' });
-                onUpdated && onUpdated();
-                onClose();
-              } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
-            }}>Marcar completada</button>
+            <button
+              className="btn"
+              onClick={async ()=>{ 
+                if (isTerminal) return;
+                if (!confirm('¿Marcar esta cita como completada? Esta acción es final.')) return;
+                try {
+                  await expressApi.patch(`/citas/${cita.id}/status`, { estado: 'completada' });
+                  onUpdated && onUpdated();
+                  onClose();
+                } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
+              }}
+              disabled={isTerminal}
+            >
+              Marcar completada
+            </button>
 
-            <button className="btn" style={{ background:'linear-gradient(90deg,#ef4444,#f97316)' }} onClick={async ()=>{
-              if (!confirm('¿Eliminar (cancelar) esta cita?')) return;
-              try {
-                await expressApi.delete(`/citas/${cita.id}`);
-                onUpdated && onUpdated();
-                onClose();
-              } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
-            }}>Cancelar / Eliminar</button>
+            <button
+              className="btn"
+              style={{ background:'linear-gradient(90deg,#ef4444,#f97316)' }}
+              onClick={async ()=>{ 
+                if (isTerminal) return;
+                if (!confirm('¿Cancelar esta cita? Esta acción pondrá el estado en "cancelada".')) return;
+                try {
+                  await expressApi.patch(`/citas/${cita.id}/status`, { estado: 'cancelada' });
+                  onUpdated && onUpdated();
+                  onClose();
+                } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
+              }}
+              disabled={isTerminal}
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       </div>
@@ -230,7 +504,7 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
   );
 }
 
-/* ----------------- Página principal Citas ----------------- */
+/* ----------------- Página principal Citas (ajustes UI: scroll en lista) ----------------- */
 export default function CitasPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -248,6 +522,20 @@ export default function CitasPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState(null);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('user');
+    if (!raw) return router.replace('/');
+    try {
+      const user = JSON.parse(raw);
+      if (user.role !== 'admin') {
+        alert('Acceso denegado: sólo administradores pueden acceder.');
+        router.replace('/dashboard');
+      }
+    } catch (e) {
+      router.replace('/');
+    }
+  }, [router]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -288,7 +576,6 @@ export default function CitasPage() {
 
   const openCreate = () => setShowCreate(true);
   const onCreated = (c) => {
-    // prefijo para mantener la lista actual; podrías re-fetch si prefieres
     setCitas(prev => [c, ...prev]);
     setTotal(t=> t+1);
   };
@@ -328,21 +615,36 @@ export default function CitasPage() {
 
       {loading ? <div className="card">Cargando citas...</div> : (
         <>
-          <div style={{ display:'grid', gap:8 }}>
+          <div style={{ display:'grid', gap:8, maxHeight: '60vh', overflowY: 'auto', paddingRight: 8 }}>
             {filtered.length === 0 && <div className="card">No hay citas</div>}
-            {filtered.map(c => (
-              <div key={c.id} className="card" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div>
-                  <div style={{ fontWeight:700 }}>{c.mascota_nombre || '—'} <small style={{ color:'var(--subtext)' }}>{new Date(c.fecha_inicio).toLocaleString()}</small></div>
-                  <div style={{ color:'var(--subtext)' }}>{c.propietario_nombre || '-'} • {c.veterinario_nombre || '-'}</div>
-                  <div style={{ color:'var(--subtext)' }}>Estado: {c.estado} • {c.duracion_min} min</div>
-                </div>
+            {filtered.map(c => {
+              const isCancelled = (c.estado || '').toLowerCase() === 'cancelada';
+              const isCompleted = (c.estado || '').toLowerCase() === 'completada';
+              const cardStyle = {
+                display:'flex',
+                justifyContent:'space-between',
+                alignItems:'center',
+                background: isCancelled
+                  ? 'linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.18))'
+                  : isCompleted
+                    ? 'linear-gradient(90deg, rgba(16,185,129,0.14), rgba(16,185,129,0.14))'
+                    : undefined,
+                border: isCancelled ? '1px solid rgba(255, 0, 0, 0.14)' : isCompleted ? '1px solid rgba(34,197,94,0.14)' : undefined
+              };
+              return (
+                <div key={c.id} className="card" style={cardStyle}>
+                  <div>
+                    <div style={{ fontWeight:700 }}>{c.mascota_nombre || '—'} <small style={{ color:'var(--subtext)' }}>{new Date(c.fecha_inicio).toLocaleString()}</small></div>
+                    <div style={{ color:'var(--subtext)' }}>{c.propietario_nombre || '-'} • {c.veterinario_nombre || '-'}</div>
+                    <div style={{ color:'var(--subtext)' }}>Estado: {c.estado} • {c.duracion_min} min</div>
+                  </div>
 
-                <div style={{ display:'flex', gap:8 }}>
-                  <button className="btn" onClick={()=>setDetail(c)}>Ver / Acciones</button>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button className="btn" onClick={()=>setDetail(c)}>Ver / Acciones</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={{ marginTop:12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
