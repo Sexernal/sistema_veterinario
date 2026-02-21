@@ -16,13 +16,13 @@ Protección al crear doctores: prompt de contraseña compartida (dev).
 
 Requisitos previos
 Node.js >= 18 (recomendado) y npm
-MySQL (XAMPP o similar) — acceso a mysql y mysqldump
+MySQL (XAMPP o similar en caso de si se va a usar localmente) — acceso a mysql y mysqldump
 Git
 
 # clona el repositorio
-git clone https://github.com/Sexernal/sistema_veterinario.git
+git clone https://github.com/Sexernal/sistema_veterinario/tree/update-2026-02-07-ultima-subida.git
 # moverte a la carpeta del reposirotio
-cd sistema_veterinario
+cd nombre_de_la_carpeta
 
 Dependencias principales:
 next
@@ -35,9 +35,13 @@ tailwindcss + @tailwindcss/postcss
 npm install
 # si axios no está ejecutar:
 npm install axios
-# crear archivo local .env.local de variables
+
+# crear archivo local .env.local de variables si se va a trabajar en local
 NEXT_PUBLIC_EXPRESS_API_URL=http://localhost:3001/api/v1
-NEXT_PUBLIC_ADMIN_CREATION_PASS=password
+NEXT_PUBLIC_ADMIN_CREATION_PASS= la contraseña que quieras agregar
+# crea archivo .en.local de variables si se va a usar en produccion
+NEXT_PUBLIC_EXPRESS_API_URL=https://api-express-mysql-produccion.vercel.app/api/v1
+NEXT_PUBLIC_ADMIN_CREATION_PASS= la contraseña que quieras agregar
 
 # configurar variables de entorno en el API
 
@@ -49,4 +53,6 @@ npm run dev
 
 # Recordatorio: Mi app tiene las funciones bloqueadas para usuarios que no son admin por ende luego de crear tu primer usuario debes ir a la base de datos y hacerlo admin manualmente (Ya no uso usuarios no admin pero mantuve estas funciones).
 
-:/ que dolores de cabeza me dio hacer esto por amor a dios (si aun no subi el SQL para la creacion de la base de datos y quiere probar el sistema me escribe y le paso el backup)
+:/ que dolores de cabeza me dio hacer esto por amor a dios (si aun no subi el SQL para la creacion de la base de datos y quiere probar el sistema en local me escribe y le paso el backup)
+
+Este proyecto acabo conmigo
