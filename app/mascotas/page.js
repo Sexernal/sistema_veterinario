@@ -1,487 +1,461 @@
 // app/mascotas/page.js
 "use client";
-
-import { useEffect, useMemo, useState, useRef } from "react";
-import expressApi from "../../lib/expressApi";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import expressApi from "../../lib/expressApi";
 
-/* ----------------- PetModalSimple: crear / editar mascota -------------- */
-function PetModalSimple({ onClose, onCreated, owners = [], initial = null, openMedicalAfterCreate = null }) {
+// ─── Helper: icono por especie ────────────────────────────────────────────────
+// Para agregar una especie nueva, agrega una entrada aquí.
+const SPECIES_ICONS = {
+  perro:    "🐕",
+  gato:     "🐈",
+  ave:      "🐦",
+  pajaro:   "🐦",
+  conejo:   "🐇",
+  serpiente:"🐍",
+  hamster:  "🐹",
+  tortuga:  "🐢",
+  pez:      "🐟",
+  caballo:  "🐴",
+};
+
+function getSpeciesIcon(especie) {
+  if (!especie) return "🐾";
+  const key = especie.toLowerCase();
+  for (const [k, icon] of Object.entries(SPECIES_ICONS)) {
+    if (key.includes(k)) return icon;
+  }
+  return "🐾";
+}
+
+// ─── Componentes UI reutilizables (locales a este archivo) ────────────────────
+
+function ModalBase({ title, subtitle, onClose, children }) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div className="title">{title}</div>
+            {subtitle && <div className="subtitle">{subtitle}</div>}
+          </div>
+          <button
+            className="btn-ghost"
+            onClick={onClose}
+            style={{ padding: "4px 8px", fontSize: 16 }}
+          >
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ErrorList({ errors }) {
+  if (!errors.length) return null;
+  return (
+    <div style={{
+      marginTop: 12, padding: "10px 14px", borderRadius: 8,
+      background: "rgba(251,113,133,0.08)",
+      border: "1px solid rgba(251,113,133,0.2)",
+      color: "#fb7185", fontSize: 13,
+    }}>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {errors.map((e, i) => <li key={i}>{e}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+// ─── Modal crear / editar mascota ─────────────────────────────────────────────
+
+function PetModal({ onClose, onSaved, owners = [], initial = null }) {
+  const isEditing = Boolean(initial?.id);
   const [form, setForm] = useState({
-    nombre: initial?.nombre || '',
-    especie: initial?.especie || '',
-    raza: initial?.raza || '',
-    edad: initial?.edad || '',
-    historial_medico: initial?.historial_medico || '',
-    owner_id: initial?.owner_id || (owners[0]?.id || '')
+    nombre:           initial?.nombre           || "",
+    especie:          initial?.especie          || "",
+    raza:             initial?.raza             || "",
+    edad:             initial?.edad             ?? "",
+    historial_medico: initial?.historial_medico || "",
+    owner_id:         initial?.owner_id         || (owners[0]?.id || ""),
   });
-  const [errors, setErrors] = useState([]);
+  const [errors, setErrors]   = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Si la lista de dueños llega después del montaje, seleccionar el primero
   useEffect(() => {
     if (!form.owner_id && owners[0]) setForm(f => ({ ...f, owner_id: owners[0].id }));
   }, [owners]);
 
-  const submit = async (e) => {
-    e?.preventDefault();
-    setErrors([]);
-    if (!form.nombre || !form.owner_id) return setErrors(['Nombre y propietario son requeridos']);
+  const validate = () => {
+    const e = [];
+    if (!form.nombre.trim())  e.push("Nombre es requerido.");
+    if (!form.owner_id)       e.push("Debe seleccionar un propietario.");
+    setErrors(e);
+    return e.length === 0;
+  };
+
+  const submit = async (ev) => {
+    ev.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     try {
-      let created;
-      if (initial && initial.id) {
-        const res = await expressApi.put(`/mascotas/${initial.id}`, form);
-        created = res.data?.data || res.data;
-      } else {
-        const res = await expressApi.post('/mascotas', form);
-        created = res.data?.data || res.data;
-      }
-      onCreated(created);
-      if (!initial && typeof openMedicalAfterCreate === 'function') openMedicalAfterCreate(created);
+      const payload = {
+        ...form,
+        edad:     form.edad !== "" ? Number(form.edad) : null,
+        owner_id: Number(form.owner_id),
+      };
+      const res = isEditing
+        ? await expressApi.put(`/mascotas/${initial.id}`, payload)
+        : await expressApi.post("/mascotas", payload);
+      onSaved(res.data?.data || res.data);
       onClose();
     } catch (err) {
-      setErrors([err?.response?.data?.message || err.message || 'Error']);
-    } finally { setLoading(false); }
+      const srv = err?.response?.data;
+      setErrors([srv?.message || err.message || "Error desconocido"]);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
   return (
-    <div className="modal-overlay">
-      <div className="modal card" style={{ maxWidth:700 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <div>
-            <div className="title">{initial ? 'Editar mascota' : 'Nueva mascota'}</div>
-            <div className="subtitle">Ficha del paciente</div>
-          </div>
-          <button className="btn-ghost" onClick={onClose}>✕</button>
-        </div>
+    <ModalBase
+      title={isEditing ? "Editar mascota" : "Nueva mascota"}
+      subtitle="Datos del paciente veterinario"
+      onClose={onClose}
+    >
+      <form onSubmit={submit} style={{ marginTop: 14 }}>
+        <label style={{ display: "block" }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Nombre</div>
+          <input className="input" value={form.nombre} onChange={set("nombre")} required />
+        </label>
 
-        <form onSubmit={submit} style={{ marginTop:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            <label>Nombre <input className="input" value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} required /></label>
-            <label>Especie <input className="input" value={form.especie} onChange={e=>setForm({...form, especie:e.target.value})} /></label>
-            <label>Raza <input className="input" value={form.raza} onChange={e=>setForm({...form, raza:e.target.value})} /></label>
-            <label>Edad (años)<input className="input" type="number" value={form.edad} onChange={e=>setForm({...form, edad:e.target.value})} /></label>
-          </div>
-
-          <label style={{ marginTop:8 }}>Propietario <small style={{ color: 'var(--subtext)' }}>Verifica bien el propietario</small>
-            <select className="input" value={form.owner_id} onChange={e=>setForm({...form, owner_id:e.target.value})} required>
-              <option value="">Selecciona propietario </option>
-              {owners.map(o => <option key={o.id} value={o.id}>{o.nombre} — {o.email}</option>)}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Especie</div>
+            <input className="input" value={form.especie} onChange={set("especie")} placeholder="Perro, Gato..." />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Raza</div>
+            <input className="input" value={form.raza} onChange={set("raza")} />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Edad (años)</div>
+            <input className="input" type="number" min="0" value={form.edad} onChange={set("edad")} />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Propietario</div>
+            <select className="input" value={form.owner_id} onChange={set("owner_id")} required>
+              <option value="">-- Seleccionar --</option>
+              {owners.map(o => (
+                <option key={o.id} value={o.id}>{o.nombre} — {o.email}</option>
+              ))}
             </select>
           </label>
+        </div>
 
-          <label style={{ marginTop:8 }}>Historial médico (nota breve)
-            <textarea className="input" rows={4} value={form.historial_medico} onChange={e=>setForm({...form, historial_medico:e.target.value})}></textarea>
-          </label>
+        <label style={{ display: "block", marginTop: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Historial médico</div>
+          <textarea
+            className="input"
+            rows={3}
+            value={form.historial_medico}
+            onChange={set("historial_medico")}
+            placeholder="Notas generales del historial..."
+          />
+        </label>
 
-          {errors.length>0 && <div style={{ color:'crimson' }}><ul>{errors.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
+        <ErrorList errors={errors} />
 
-          <div style={{ display:'flex', gap:8, marginTop:12 }}>
-            <button className="btn" type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</button>
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancelar</button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button className="btn" type="submit" disabled={loading}>
+            {loading ? "Guardando..." : (isEditing ? "Guardar cambios" : "Crear mascota")}
+          </button>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancelar</button>
+        </div>
+      </form>
+    </ModalBase>
   );
 }
 
-/* ----------------- RecordDetailModal: muestra ficha completa -------------- */
-function RecordDetailModal({ record, onClose, makeFileUrl }) {
-  if (!record) return null;
+// ─── Página principal de Mascotas ─────────────────────────────────────────────
 
-  const fechaStr = record.fecha_display || (record.fecha ? new Date(record.fecha).toLocaleString() : '-');
-  const pesoStr = (record.peso || record.peso === 0) ? `${Number(record.peso).toFixed(2)} kg` : '-';
-  const creador = record.creado_por_nombre || '—';
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal card" style={{ maxWidth:720 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <div>
-            <div className="title">Ficha — {record.tipo || 'Registro'}</div>
-            <div className="subtitle">{record.mascota_nombre || ''}</div>
-          </div>
-          <button className="btn-ghost" onClick={onClose}>✕</button>
-        </div>
-
-        <div style={{ marginTop:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            <div><strong>Fecha:</strong><div style={{ color:'var(--subtext)' }}>{fechaStr}</div></div>
-            <div><strong>Peso:</strong><div style={{ color:'var(--subtext)' }}>{pesoStr}</div></div>
-            <div style={{ gridColumn: '1 / -1', marginTop:6 }}>
-              <strong>Atendido por:</strong>
-              <div style={{ color:'var(--subtext)' }}>{creador}</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop:10 }}>
-            <strong>Nota / Observaciones:</strong>
-            <div style={{ whiteSpace:'pre-wrap', color:'#cbd8ee', marginTop:6 }}>{record.nota || '-'}</div>
-          </div>
-
-          {record.filepath && (
-            <div style={{ marginTop:12, display:'flex', gap:8 }}>
-              <a className="btn" href={makeFileUrl(record.filepath)} target="_blank" rel="noreferrer">Abrir archivo</a>
-              <a className="btn-ghost" href={makeFileUrl(record.filepath)} target="_blank" rel="noreferrer" download>Descargar</a>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ----------------- MedicalModal: ver/crear registros médicos -------------- */
-function MedicalModal({ onClose, pet, onUploaded }) {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState(null);
-  const [tipo, setTipo] = useState('');
-  const [nota, setNota] = useState('');
-  const [peso, setPeso] = useState('');
-  const [fecha, setFecha] = useState('');
-  const [detail, setDetail] = useState(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
-
-  // ref para resetear el input file
-  const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    if (!pet) return;
-    fetchRecords();
-  }, [pet]);
-
-  const fetchRecords = async () => {
-    if (!pet) return;
-    setLoading(true);
-    try {
-      const res = await expressApi.get(`/medical-records?pet_id=${pet.id}`);
-      setRecords(res.data?.data || []);
-    } catch (err) {
-      console.error('Error fetching medical records', err);
-      alert('Error cargando fichas médicas');
-    } finally { setLoading(false); }
-  };
-
-  const handleFileChange = (e) => {
-    setFile(e.target.files?.[0] || null);
-  };
-
-  // helper para construir URL completa al archivo (dev / prod)
-  const makeFileUrl = (pathOrUrl) => {
-    if (!pathOrUrl) return '';
-    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-    const API_BASE = process.env.NEXT_PUBLIC_EXPRESS_API_URL || 'http://localhost:3001';
-    if (pathOrUrl.startsWith('/')) return `${API_BASE}${pathOrUrl}`;
-    return `${API_BASE}/${pathOrUrl}`;
-  };
-
-  // Ahora archivo es OPCIONAL
-  const uploadRecord = async (e) => {
-    e?.preventDefault();
-    if (!pet) return alert('Mascota no disponible');
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('pet_id', pet.id);
-      fd.append('tipo', tipo || 'consulta');
-      fd.append('nota', nota || '');
-      if (peso !== '') fd.append('peso', peso);
-      if (fecha) fd.append('fecha', fecha);
-      if (file) fd.append('file', file); // opcional
-
-      const res = await expressApi.post('/medical-records', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      const created = res.data?.data || res.data;
-
-      // reset campos y el input file visible
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      setTipo('');
-      setNota('');
-      setPeso('');
-      setFecha('');
-
-      onUploaded && onUploaded(created);
-      fetchRecords();
-    } catch (err) {
-      console.error('Upload error', err);
-      alert(err?.response?.data?.message || err.message || 'Error subiendo ficha');
-    } finally { setUploading(false); }
-  };
-
-  const deleteRecord = async (id) => {
-    if (!confirm('Eliminar ficha médica?')) return;
-    try {
-      await expressApi.delete(`/medical-records/${id}`);
-      fetchRecords();
-    } catch (err) {
-      alert(err?.response?.data?.message || err.message || 'Error eliminando');
-    }
-  };
-
-  const renderPreviewLink = (r) => {
-    const raw = r.filepath || r.url || '';
-    if (!raw) return null;
-    const full = makeFileUrl(raw);
-    const ext = (raw.split('.').pop() || '').toLowerCase();
-    const isImage = ['png','jpg','jpeg','webp','gif'].includes(ext);
-    return (
-      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-        <a className="btn" href={full} target="_blank" rel="noreferrer">Abrir archivo</a>
-        <a className="btn-ghost" href={full} target="_blank" rel="noreferrer" download>Descargar</a>
-        {isImage && <button className="btn-ghost" onClick={()=>setImagePreviewUrl(full)}>Ver imagen</button>}
-      </div>
-    );
-  };
-
-  const handleClear = () => {
-    setFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setTipo('');
-    setNota('');
-    setPeso('');
-    setFecha('');
-  };
-
-  return (
-    <>
-      <div className="modal-overlay">
-        <div className="modal card" style={{ maxWidth:720, maxHeight:'80vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
-            <div>
-              <div className="title">Ficha médica — {pet?.nombre}</div>
-              <div className="subtitle">Sube exámenes, fotos, recetas o registros</div>
-            </div>
-            <button className="btn-ghost" onClick={onClose}>✕</button>
-          </div>
-
-          <div style={{ padding:16, overflowY:'auto' }}>
-            <form onSubmit={uploadRecord}>
-              <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap:8 }}>
-                <label>Tipo (ej: radiografía, análisis) <input className="input" value={tipo} onChange={e=>setTipo(e.target.value)} /></label>
-                <label>Peso (kg) <input className="input" value={peso} onChange={e=>setPeso(e.target.value)} /></label>
-              </div>
-
-              <label style={{ marginTop:8 }}>Fecha <input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} /></label>
-
-              <label style={{ marginTop:8 }}>Archivo (PDF / Imagen) <small style={{ color:'var(--subtext)' }}>Opcional - no es obligatorio subir archivo.</small>
-                <input ref={fileInputRef} className="input" type="file" accept=".pdf,image/*" onChange={handleFileChange} />
-                <small style={{ color:'var(--subtext)' }}>Opcional — no es obligatorio subir archivo.</small>
-              </label>
-
-              <label style={{ marginTop:8 }}>Nota / Observaciones
-                <textarea className="input" rows={3} value={nota} onChange={e=>setNota(e.target.value)} />
-              </label>
-
-              <div style={{ display:'flex', gap:8, marginTop:12 }}>
-                <button className="btn" type="submit" disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir ficha'}</button>
-                <button type="button" className="btn-ghost" onClick={handleClear}>Limpiar</button>
-              </div>
-            </form>
-
-            <hr style={{ margin:'12px 0' }} />
-
-            <div>
-              <h4>Registros ({records.length})</h4>
-              {loading ? <div className="card">Cargando fichas...</div> : (
-                <div style={{ display:'grid', gap:8 }}>
-                  {records.length === 0 && <div className="card">No hay fichas médicas</div>}
-
-                  {/* Scrollable list para evitar que modal crezca */}
-                  <div style={{ display:'grid', gap:8, maxHeight:'42vh', overflowY:'auto', paddingRight:8 }}>
-                    {records.map(r => {
-                      const fechaStr = r.fecha_display || (r.fecha ? new Date(r.fecha).toLocaleString() : '-');
-                      const pesoStr = (r.peso || r.peso === 0) ? `${Number(r.peso).toFixed(2)} kg` : '-';
-                      const creador = r.creado_por_nombre || '—';
-                      return (
-                        <div key={r.id} className="card" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                          <div>
-                            <div style={{ fontWeight:700 }}>
-                              {r.tipo || 'Archivo'} <small style={{ color:'var(--subtext)' }}>{fechaStr}</small>
-                            </div>
-                            <div style={{ color:'var(--subtext)' }}>
-                              {r.nota ? (r.nota.length>140 ? r.nota.substring(0,140)+'...' : r.nota) : (r.filename || '-')}
-                            </div>
-                            <div style={{ color:'var(--subtext)', marginTop:6 }}>
-                              <small> Peso: {pesoStr} • Atendido por: {creador} </small>
-                            </div>
-                          </div>
-
-                          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                            <button className="btn" onClick={()=>setDetail(r)}>Ver ficha</button>
-                            {renderPreviewLink(r)}
-                            <button className="btn" style={{ background:'linear-gradient(90deg,#ef4444,#f97316)' }} onClick={()=>deleteRecord(r.id)}>Eliminar</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {detail && <RecordDetailModal record={detail} onClose={()=>setDetail(null)} makeFileUrl={makeFileUrl} />}
-
-      {imagePreviewUrl && (
-        <div className="modal-overlay" onClick={()=>setImagePreviewUrl(null)} style={{ cursor:'pointer' }}>
-          <div className="modal card" style={{ maxWidth: '90vw', maxHeight:'90vh', display:'flex', justifyContent:'center', alignItems:'center' }} onClick={(e)=>e.stopPropagation()}>
-            <div style={{ width:'100%', height:'100%', display:'flex', justifyContent:'center', alignItems:'center' }}>
-              <img src={imagePreviewUrl} alt="preview" style={{ maxWidth:'100%', maxHeight:'88vh', objectFit:'contain', borderRadius:8 }} />
-            </div>
-            <button className="btn-ghost" onClick={()=>setImagePreviewUrl(null)} style={{ position:'absolute', right:12, top:12 }}>✕</button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ----------------- Página principal de mascotas ------------------- */
 export default function MascotasPage() {
   const router = useRouter();
-  const [pets, setPets] = useState([]);
-  const [owners, setOwners] = useState([]);
+  const [pets, setPets]       = useState([]);
+  const [owners, setOwners]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
-  const [speciesFilter, setSpeciesFilter] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [filter, setFilter]   = useState("");
+  const [speciesFilter, setSpeciesFilter] = useState("");
+  const [modal, setModal]     = useState({ open: false, pet: null }); // { open, pet }
 
-  const [showMedicalModal, setShowMedicalModal] = useState(false);
-  const [medicalPet, setMedicalPet] = useState(null);
-
+  // Verificar sesión — cualquier rol del personal puede acceder
   useEffect(() => {
-    const raw = localStorage.getItem('user');
-    if (!raw) return router.replace('/');
-    try {
-      const user = JSON.parse(raw);
-      if (user.role !== 'admin') {
-        alert('Acceso denegado: sólo administradores pueden acceder.');
-        router.replace('/dashboard');
-      }
-    } catch (e) {
-      router.replace('/');
-    }
+    const raw = localStorage.getItem("user");
+    if (!raw) return router.replace("/");
+    try { JSON.parse(raw); } catch { router.replace("/"); }
   }, [router]);
 
   useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const [pRes, oRes] = await Promise.all([
-        expressApi.get('/mascotas?page=1&limit=500'),
-        expressApi.get('/propietarios?page=1&limit=500')
+        expressApi.get("/mascotas?page=1&limit=500"),
+        expressApi.get("/propietarios?page=1&limit=500"),
       ]);
-      setPets(pRes.data?.data || []);
+      setPets(pRes.data?.data   || []);
       setOwners(oRes.data?.data || []);
     } catch (err) {
       console.error(err);
-      alert('Error cargando datos');
-    } finally { setLoading(false); }
+      alert("Error cargando datos");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const speciesList = useMemo(()=> {
-    const s = new Set();
-    for (const p of pets) if (p.especie) s.add(p.especie);
-    return Array.from(s);
+  // Lista de especies únicas para el filtro
+  const speciesList = useMemo(() => {
+    const s = new Set(pets.map(p => p.especie).filter(Boolean));
+    return Array.from(s).sort();
   }, [pets]);
 
-  const filtered = useMemo(()=> {
+  // Mascotas filtradas por búsqueda + especie
+  const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return pets.filter(p => {
       if (speciesFilter && p.especie !== speciesFilter) return false;
       if (!q) return true;
-      return (p.nombre||'').toLowerCase().includes(q)
-        || (p.raza||'').toLowerCase().includes(q)
-        || (p.propietario_nombre||'').toLowerCase().includes(q);
+      return (
+        (p.nombre             || "").toLowerCase().includes(q) ||
+        (p.raza               || "").toLowerCase().includes(q) ||
+        (p.propietario_nombre || "").toLowerCase().includes(q) ||
+        (p.owner_name         || "").toLowerCase().includes(q)
+      );
     });
   }, [pets, filter, speciesFilter]);
 
-  const openCreate = () => { setEditing(null); setShowModal(true); };
-  const openEdit = (p) => { setEditing(p); setShowModal(true); };
+  const openCreate = ()     => setModal({ open: true, pet: null });
+  const openEdit   = (pet)  => setModal({ open: true, pet });
+  const closeModal = ()     => setModal({ open: false, pet: null });
 
-  const removePet = async (id) => {
-    if (!confirm('Eliminar mascota?')) return;
+  const handleSaved = (saved) => {
+    setPets(prev => {
+      const exists = prev.find(x => x.id === saved.id);
+      return exists
+        ? prev.map(x => x.id === saved.id ? saved : x)
+        : [saved, ...prev];
+    });
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("¿Eliminar esta mascota? Esta acción no se puede deshacer.")) return;
     try {
       await expressApi.delete(`/mascotas/${id}`);
       setPets(prev => prev.filter(x => x.id !== id));
-    } catch (err) { alert(err?.response?.data?.message || err.message || 'Error'); }
+    } catch (err) {
+      alert(err?.response?.data?.message || err.message || "Error al eliminar");
+    }
   };
 
-  const openMedicalForPet = (petObj) => {
-    setMedicalPet(petObj);
-    setShowMedicalModal(true);
-  };
+  // ─ Render ─
 
-  if (loading) return <div style={{ padding:24 }}><div className="card">Cargando mascotas...</div></div>;
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="card" style={{ padding: "24px 32px", color: "var(--subtext)" }}>
+          Cargando mascotas...
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding:24 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <h1>Mascotas</h1>
-        <div style={{ display:'flex', gap:8 }}>
-          <input className="input" placeholder="Buscar nombre, raza o dueño" value={filter} onChange={e=>setFilter(e.target.value)} />
-          <select className="input" value={speciesFilter} onChange={e=>setSpeciesFilter(e.target.value)}>
+    <div style={{ minHeight: "100vh" }}>
+
+      {/* ── Barra superior ── */}
+      <header style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "#0b1220",
+        borderBottom: "1px solid rgba(255,255,255,0.05)",
+        padding: "0 24px",
+        display: "flex", alignItems: "center", gap: 12,
+        height: 64, flexWrap: "wrap",
+      }}>
+        {/* Título + conteo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
+          <button
+            className="btn-ghost"
+            onClick={() => router.push("/dashboard")}
+            style={{ padding: "6px 10px", fontSize: 13 }}
+          >
+            ← Dashboard
+          </button>
+          <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.06)" }} />
+          <span style={{ fontWeight: 900, fontSize: 17 }}>Mascotas</span>
+          <span style={{
+            background: "rgba(96,165,250,0.12)",
+            border: "1px solid rgba(96,165,250,0.25)",
+            color: "var(--accent)",
+            borderRadius: 20, padding: "2px 10px",
+            fontSize: 12, fontWeight: 700,
+          }}>
+            {filtered.length}
+          </span>
+        </div>
+
+        {/* Controles de búsqueda */}
+        <div style={{ display: "flex", gap: 8, flex: 1, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <input
+            className="input"
+            placeholder="Buscar nombre, raza o dueño..."
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            style={{ maxWidth: 240 }}
+          />
+          <select
+            className="input"
+            value={speciesFilter}
+            onChange={e => setSpeciesFilter(e.target.value)}
+            style={{ maxWidth: 160 }}
+          >
             <option value="">Todas las especies</option>
-            {speciesList.map(s=> <option key={s} value={s}>{s}</option>)}
+            {speciesList.map(s => (
+              <option key={s} value={s}>{getSpeciesIcon(s)} {s}</option>
+            ))}
           </select>
-          <button className="btn" onClick={openCreate}>Nueva mascota</button>
+          <button className="btn" onClick={openCreate} style={{ whiteSpace: "nowrap" }}>
+            + Nueva mascota
+          </button>
+        </div>
+      </header>
+
+      {/* ── Grid de mascotas ── */}
+      <main style={{ padding: "24px", maxWidth: 1200, margin: "0 auto" }}>
+
+        {filtered.length === 0 && (
+          <div style={{
+            textAlign: "center", padding: "60px 24px",
+            color: "var(--subtext)", fontSize: 15,
+          }}>
+            {filter || speciesFilter
+              ? "No se encontraron mascotas con esos filtros."
+              : "No hay mascotas registradas aún."}
+          </div>
+        )}
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          gap: 14,
+        }}>
+          {filtered.map(p => (
+            <PetCard
+              key={p.id}
+              pet={p}
+              onEdit={() => openEdit(p)}
+              onDelete={() => handleDelete(p.id)}
+            />
+          ))}
+        </div>
+      </main>
+
+      {/* ── Modal ── */}
+      {modal.open && (
+        <PetModal
+          initial={modal.pet}
+          owners={owners}
+          onClose={closeModal}
+          onSaved={handleSaved}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── PetCard — componente separado para mantener el render limpio ─────────────
+
+function PetCard({ pet, onEdit, onDelete }) {
+  const icon     = getSpeciesIcon(pet.especie);
+  const ownerName = pet.propietario_nombre || pet.owner_name || "-";
+
+  return (
+    <div className="card" style={{
+      display: "flex",
+      flexDirection: "column",
+      padding: 0,
+      overflow: "hidden",
+    }}>
+      {/* Card header */}
+      <div style={{
+        padding: "16px 18px 12px",
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        display: "flex", alignItems: "flex-start", gap: 12,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 10,
+          background: "rgba(96,165,250,0.1)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 22, flexShrink: 0,
+        }}>
+          {icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)" }}>
+            {pet.nombre}
+          </div>
+          <div style={{ color: "var(--subtext)", fontSize: 13, marginTop: 2 }}>
+            {[pet.especie, pet.raza].filter(Boolean).join(" · ") || "Sin clasificar"}
+            {pet.edad != null ? ` · ${pet.edad} años` : ""}
+          </div>
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
-        {filtered.map(p => (
-          <div key={p.id} className="card" style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <div>
-                <div style={{ fontWeight:800 }}>{p.nombre} <small style={{ color:'var(--subtext)' }}>({p.especie||'-'})</small></div>
-                <div style={{ color:'var(--subtext)' }}>{p.raza || '-'} • {p.edad ?? '-'} años</div>
-                <div style={{ marginTop:6, color:'var(--subtext)' }}>Dueño: {p.propietario_nombre || p.owner_name || '-'}</div>
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <button className="btn" onClick={()=>openEdit(p)}>Ver / Editar</button>
-                <button className="btn" onClick={()=>openMedicalForPet(p)}>Ficha médica</button>
-                <button className="btn" style={{ background:'linear-gradient(90deg,#ef4444,#f97316)' }} onClick={()=>removePet(p.id)}>Eliminar</button>
-              </div>
-            </div>
-            {p.historial_medico && <div style={{ color:'#cbd8ee' }}>{p.historial_medico.substring(0,140)}{p.historial_medico.length>140?'...':''}</div>}
+      {/* Card body */}
+      <div style={{ padding: "12px 18px", flex: 1 }}>
+        <div style={{ fontSize: 12, color: "var(--subtext)", marginBottom: 6 }}>
+          <span style={{ marginRight: 4 }}>👤</span>
+          {ownerName}
+        </div>
+        {pet.historial_medico && (
+          <div style={{ fontSize: 13, color: "#aebfd8", lineHeight: 1.5 }}>
+            {pet.historial_medico.length > 100
+              ? `${pet.historial_medico.substring(0, 100)}...`
+              : pet.historial_medico}
           </div>
-        ))}
+        )}
+        {!pet.historial_medico && (
+          <div style={{ fontSize: 12, color: "rgba(174,191,216,0.35)", fontStyle: "italic" }}>
+            Sin historial registrado
+          </div>
+        )}
       </div>
 
-      {showModal && <PetModalSimple
-        initial={editing}
-        owners={owners}
-        onClose={()=>{ setShowModal(false); setEditing(null); }}
-        onCreated={(c)=>{
-          setPets(prev => {
-            const exists = prev.find(x=>x.id === c.id);
-            if (exists) return prev.map(x => x.id === c.id ? c : x);
-            return [c, ...prev];
-          });
-        }}
-        openMedicalAfterCreate={(createdPet) => {
-          setTimeout(()=> openMedicalForPet(createdPet), 200);
-        }}
-      />}
-
-      {showMedicalModal && medicalPet && <MedicalModal
-        pet={medicalPet}
-        onClose={()=>{ setShowMedicalModal(false); setMedicalPet(null); }}
-        onUploaded={(r)=> { /* opcional: fetchAll(); */ }}
-      />}
-
-      <div style={{ position:'fixed', right:18, bottom:18 }}>
-        <button className="btn btn-ghost" onClick={()=>router.push('/dashboard')} style={{ padding:'10px 14px' }}>← Volver al Dashboard</button>
+      {/* Card footer — acciones */}
+      <div style={{
+        padding: "10px 18px",
+        borderTop: "1px solid rgba(255,255,255,0.04)",
+        display: "flex", gap: 8,
+      }}>
+        <button
+          className="btn"
+          onClick={onEdit}
+          style={{ flex: 1, padding: "7px 0", fontSize: 13 }}
+        >
+          Ver / Editar
+        </button>
+        <button
+          className="btn btn-danger"
+          onClick={onDelete}
+          style={{ flex: 1, padding: "7px 0", fontSize: 13 }}
+        >
+          Eliminar
+        </button>
       </div>
     </div>
   );
