@@ -392,7 +392,7 @@ function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
           </select>
         </label>
         <label style={{ display: "block", marginTop: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Historial médico</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Observaciones</div>
           <textarea className="input" rows={3} value={form.historial_medico} onChange={e => setForm(f => ({ ...f, historial_medico: e.target.value }))} />
         </label>
         <ErrorList errors={errors} />
