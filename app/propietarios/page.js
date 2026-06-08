@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
 
 // ─── Helper: icono por especie ────────────────────────────────────────────────
-// Para agregar una especie nueva, agrega una entrada aquí.
 const SPECIES_ICONS = {
   perro:     "🐕",
   gato:      "🐈",
@@ -25,15 +24,21 @@ const getSpeciesIcon = (especie) => SPECIES_ICONS[(especie || "").toLowerCase()]
 function ModalBase({ title, subtitle, onClose, children, maxWidth = 560 }) {
   return (
     <div className="modal-overlay">
-      <div className="modal card" style={{ maxWidth }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+      <div className="modal card" style={{
+        maxWidth, width: "92vw", maxHeight: "88vh",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+      }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0,
+        }}>
           <div>
-            <div className="title">{title}</div>
-            {subtitle && <div className="subtitle">{subtitle}</div>}
+            <div className="title" style={{ fontSize: 18 }}>{title}</div>
+            {subtitle && <div className="subtitle" style={{ fontSize: 13 }}>{subtitle}</div>}
           </div>
-          <button className="btn-ghost" onClick={onClose} style={{ padding:"4px 8px", fontSize:16 }}>✕</button>
+          <button className="btn-ghost" onClick={onClose} style={{ fontSize: 18 }}>✕</button>
         </div>
-        {children}
+        <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>{children}</div>
       </div>
     </div>
   );
@@ -65,11 +70,13 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
     telefono:  initial?.telefono  || "",
     direccion: initial?.direccion || "",
   });
+  const [cedula, setCedula]                   = useState("");
   const [password, setPassword]               = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors]   = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const onCedulaChange = (v) => setCedula(v.replace(/\D/g, "").slice(0, 9));
   const onTelefonoChange = (v) =>
     setForm(f => ({ ...f, telefono: v.replace(/[^0-9+\-\s().]/g, "") }));
 
@@ -88,7 +95,9 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
     }
     if (form.direccion.trim().length < 5)
       e.push("Dirección requerida (mínimo 5 caracteres).");
-    if (!isEditing && password) {
+    if (!isEditing && cedula && cedula.length !== 9)
+      e.push("Cédula debe tener exactamente 9 dígitos.");
+    if (password) {
       if (password.length < 8)         e.push("Contraseña: mínimo 8 caracteres.");
       if (password !== confirmPassword) e.push("Las contraseñas no coinciden.");
     }
@@ -102,7 +111,12 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
     setLoading(true);
     try {
       const payload = { ...form };
-      if (!isEditing && password) payload.password = password;
+      if (!isEditing) {
+        if (cedula)   payload.cedula   = cedula;
+        if (password) payload.password = password;
+      } else {
+        if (password) payload.password = password;
+      }
       const res = isEditing
         ? await expressApi.put(`/propietarios/${initial.id}`, payload)
         : await expressApi.post("/propietarios", payload);
@@ -120,6 +134,43 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
       onClose={onClose}
     >
       <form onSubmit={submit}>
+
+        {/* CEDULA: readonly badge en modo editar */}
+        {isEditing && initial?.cedula && (
+          <div style={{ marginTop:10 }}>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>Cédula</div>
+            <div style={{
+              display:"inline-flex", alignItems:"center", gap:8,
+              padding:"6px 14px", borderRadius:8,
+              background:"rgba(96,165,250,0.08)", border:"1px solid rgba(96,165,250,0.2)",
+              fontFamily:"monospace", fontSize:15, fontWeight:700, letterSpacing:"0.1em",
+            }}>
+              🪪 {initial.cedula}
+            </div>
+            <div style={{ marginTop:4, fontSize:11, color:"var(--subtext)" }}>
+              La cédula no se puede modificar.
+            </div>
+          </div>
+        )}
+
+        {/* CEDULA: campo editable en modo crear (opcional) */}
+        {!isEditing && (
+          <label style={{ display:"block", marginTop:10 }}>
+            <div style={{ fontSize:13, fontWeight:600 }}>Cédula (opcional)</div>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={9}
+              value={cedula}
+              onChange={e => onCedulaChange(e.target.value)}
+              placeholder="000000000"
+            />
+            <small style={{ color:"var(--subtext)" }}>
+              9 dígitos. Requerida para inicio de sesión en la app móvil.
+            </small>
+          </label>
+        )}
+
         {[
           { label:"Nombre",    key:"nombre",    type:"text"  },
           { label:"Email",     key:"email",     type:"email" },
@@ -140,23 +191,33 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
           <small style={{ color:"var(--subtext)" }}>Mínimo 7 dígitos. Permite + - ( ) . y espacios.</small>
         </label>
 
-        {/* Contraseña solo al crear — para acceso a la app móvil */}
-        {!isEditing && (
-          <>
-            <hr style={{ margin:"14px 0", borderColor:"rgba(255,255,255,0.05)" }} />
-            <label style={{ display:"block", marginTop:10 }}>
-              <div style={{ fontSize:13, fontWeight:600 }}>Contraseña (opcional)</div>
-              <input className="input" type="password" value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Dejar vacío si no necesita acceso a la app móvil" />
-              <small style={{ color:"var(--subtext)" }}>Solo si el propietario va a iniciar sesión en la app móvil.</small>
-            </label>
-            <label style={{ display:"block", marginTop:10 }}>
-              <div style={{ fontSize:13, fontWeight:600 }}>Confirmar contraseña</div>
-              <input className="input" type="password" value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)} />
-            </label>
-          </>
+        {/* Sección de contraseña */}
+        <hr style={{ margin:"14px 0", borderColor:"rgba(255,255,255,0.05)" }} />
+        <label style={{ display:"block", marginTop:10 }}>
+          <div style={{ fontSize:13, fontWeight:600 }}>
+            {isEditing ? "Nueva contraseña (opcional)" : "Contraseña (opcional)"}
+          </div>
+          <input className="input" type="password" value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder={
+              isEditing
+                ? "Dejar vacío para no cambiar"
+                : "Dejar vacío si no necesita acceso a la app móvil"
+            }
+          />
+          <small style={{ color:"var(--subtext)" }}>
+            {isEditing
+              ? "Solo si deseas restablecer la contraseña del propietario."
+              : "Solo si el propietario va a iniciar sesión en la app móvil."}
+          </small>
+        </label>
+        {password && (
+          <label style={{ display:"block", marginTop:10 }}>
+            <div style={{ fontSize:13, fontWeight:600 }}>Confirmar contraseña</div>
+            <input className="input" type="password" value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              placeholder="Repetir contraseña" />
+          </label>
         )}
 
         <ErrorList errors={errors} />
@@ -273,7 +334,6 @@ const TIPO_OPCIONES = [
 ];
 const TIPO_LABELS = Object.fromEntries(TIPO_OPCIONES.map(t => [t.value, t.label]));
 
-// Formulario interno (crear o editar una sola ficha)
 function FichaForm({ petId, initial = null, onSaved, onCancel }) {
   const isEditing = !!initial?.id;
   const today = new Date().toISOString().split("T")[0];
@@ -366,7 +426,6 @@ function FichaForm({ petId, initial = null, onSaved, onCancel }) {
   );
 }
 
-// Modal principal de fichas de una mascota
 function FichasModal({ pet, onClose }) {
   const [fichas, setFichas]         = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -411,7 +470,6 @@ function FichasModal({ pet, onClose }) {
       onClose={onClose}
       maxWidth={700}
     >
-      {/* Botón nueva ficha (oculto si ya hay formulario abierto) */}
       {!showForm && !editingFicha && (
         <button className="btn" onClick={() => setShowForm(true)} style={{ marginBottom:12 }}>
           + Nueva ficha
@@ -425,7 +483,6 @@ function FichasModal({ pet, onClose }) {
         <FichaForm petId={pet.id} initial={editingFicha} onSaved={handleSaved} onCancel={() => setEditingFicha(null)} />
       )}
 
-      {/* Lista */}
       {loading ? (
         <div style={{ padding:"20px 0", textAlign:"center", color:"var(--subtext)" }}>Cargando fichas...</div>
       ) : fichas.length === 0 ? (
@@ -498,10 +555,8 @@ export default function PropietariosPage() {
   const [selectedOwnerId, setSelectedOwnerId] = useState(null);
   const [ownerModal, setOwnerModal]   = useState(null); // null | "new" | ownerObject
   const [petModal,   setPetModal]     = useState(null); // null | "new" | petObject
-  const [fichasTarget, setFichasTarget] = useState(null); // null | petObject
+  const [fichasTarget, setFichasTarget] = useState(null);
 
-  // Solo verifica que el usuario esté logueado — recepcionistas tienen acceso completo aquí.
-  // La única restricción de rol en esta página es el botón de fichas médicas.
   useEffect(() => {
     const raw = localStorage.getItem("user");
     if (!raw) return router.replace("/");
@@ -538,8 +593,10 @@ export default function PropietariosPage() {
     const q = filter.trim().toLowerCase();
     if (!q) return owners;
     return owners.filter(o =>
-      (o.nombre || "").toLowerCase().includes(q) ||
-      (o.email  || "").toLowerCase().includes(q)
+      (o.nombre   || "").toLowerCase().includes(q) ||
+      (o.email    || "").toLowerCase().includes(q) ||
+      (o.telefono || "").includes(q) ||
+      (o.cedula   || "").includes(q)
     );
   }, [owners, filter]);
 
@@ -628,7 +685,7 @@ export default function PropietariosPage() {
         {/* Panel izquierdo: lista */}
         <div style={{ borderRight:"1px solid rgba(255,255,255,0.06)", display:"flex", flexDirection:"column", overflow:"hidden" }}>
           <div style={{ padding:"12px", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
-            <input className="input" placeholder="Buscar por nombre o email..."
+            <input className="input" placeholder="Buscar por nombre, email o cédula..."
               value={filter} onChange={e => setFilter(e.target.value)} style={{ margin:0 }} />
           </div>
           <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
@@ -656,6 +713,11 @@ export default function PropietariosPage() {
                       {o.nombre}
                     </div>
                     <div className="small-muted" style={{ fontSize:12, marginTop:2 }}>{o.email}</div>
+                    {o.cedula && (
+                      <div style={{ fontSize:11, color:"var(--subtext)", marginTop:2, fontFamily:"monospace" }}>
+                        🪪 {o.cedula}
+                      </div>
+                    )}
                   </div>
                   <div style={{
                     minWidth:36, height:36, borderRadius:8, marginLeft:8, flexShrink:0,
@@ -697,6 +759,16 @@ export default function PropietariosPage() {
                       <div className="small-muted">{selectedOwner.email}</div>
                       {selectedOwner.telefono  && <div className="small-muted">{selectedOwner.telefono}</div>}
                       {selectedOwner.direccion && <div className="small-muted" style={{ marginTop:4 }}>{selectedOwner.direccion}</div>}
+                      {selectedOwner.cedula && (
+                        <div style={{
+                          display:"inline-flex", alignItems:"center", gap:6, marginTop:6,
+                          padding:"4px 10px", borderRadius:6,
+                          background:"rgba(96,165,250,0.08)", border:"1px solid rgba(96,165,250,0.15)",
+                          fontFamily:"monospace", fontSize:13,
+                        }}>
+                          🪪 {selectedOwner.cedula}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:8, flexShrink:0 }}>
@@ -758,9 +830,7 @@ export default function PropietariosPage() {
                         </div>
                       </div>
 
-                      {/* Botones por mascota */}
                       <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-                        {/* Fichas médicas: solo visible para admin/doctores */}
                         {isAdmin && (
                           <button
                             className="btn"
