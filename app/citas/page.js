@@ -26,15 +26,24 @@ const TIPO_OPTIONS = [
 ];
 
 const DURATION_MAP = {
-  "consulta general": 30,
-  "vacunacion": 20,
-  "urgencia": 60,
-  "cirugia": 120,
-  "peluqueria": 45,
-  "control": 20,
-  "desparacitacion": 15,
+  "consulta general": 30, "vacunacion": 20, "urgencia": 60,
+  "cirugia": 120, "peluqueria": 45, "control": 20, "desparacitacion": 15,
 };
 const getDurationForTipo = (t) => DURATION_MAP[(t || "").toLowerCase()] || 30;
+
+/* ============================================================
+   LOG: configuración visual de acciones
+   ============================================================ */
+const LOG_ACTIONS = {
+  creada:         { icon: "📅", label: "Cita creada",        color: "#3b82f6" },
+  confirmada:     { icon: "✅", label: "Confirmada",         color: "#3b82f6" },
+  completada:     { icon: "🏁", label: "Marcada completada", color: "#10b981" },
+  cancelada:      { icon: "✖️", label: "Cancelada",          color: "#ef4444" },
+  estado_cambiado:{ icon: "🔄", label: "Estado cambiado",    color: "#f59e0b" },
+  eliminada:      { icon: "🗑️", label: "Eliminada",          color: "#ef4444" },
+  actualizada:    { icon: "✏️", label: "Datos actualizados", color: "#8b5cf6" },
+};
+const ROLE_LABEL = { admin: "Veterinario", user: "Recepcionista", propietario: "Propietario" };
 
 /* ============================================================
    COMPONENTES VISUALES COMPARTIDOS
@@ -112,7 +121,57 @@ function StatCard({ icon, label, value, color, active, onClick }) {
 }
 
 /* ============================================================
-   CreateCitaModal (FUNCIONALIDAD INTACTA, SOLO VISUAL NUEVO)
+   LogEntry — un evento del historial
+   ============================================================ */
+function LogEntry({ entry, isLast }) {
+  const cfg   = LOG_ACTIONS[entry.accion] || { icon: "❓", label: entry.accion, color: "var(--subtext)" };
+  const fecha = entry.created_at ? new Date(entry.created_at).toLocaleString() : "—";
+  const role  = ROLE_LABEL[entry.usuario_role] || entry.usuario_role || "Sistema";
+
+  return (
+    <div style={{ display: "flex", gap: 12 }}>
+      {/* Línea vertical del timeline */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 32, flexShrink: 0 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: `${cfg.color}22`, border: `2px solid ${cfg.color}`, fontSize: 14,
+        }}>
+          {cfg.icon}
+        </div>
+        {!isLast && (
+          <div style={{ width: 2, flex: 1, background: "rgba(255,255,255,0.07)", minHeight: 16, margin: "4px 0" }} />
+        )}
+      </div>
+
+      {/* Contenido del evento */}
+      <div style={{ paddingBottom: isLast ? 0 : 18, flex: 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, color: cfg.color, fontSize: 13 }}>{cfg.label}</span>
+          <span style={{ fontSize: 11, color: "var(--subtext)" }}>{fecha}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--subtext)", marginTop: 2 }}>
+          {entry.usuario_nombre ? `${entry.usuario_nombre} · ${role}` : role}
+        </div>
+        {(entry.estado_anterior || entry.estado_nuevo) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {entry.estado_anterior && <StatusBadge estado={entry.estado_anterior} />}
+            {entry.estado_anterior && entry.estado_nuevo && (
+              <span style={{ color: "var(--subtext)", fontSize: 14 }}>→</span>
+            )}
+            {entry.estado_nuevo && <StatusBadge estado={entry.estado_nuevo} />}
+          </div>
+        )}
+        {entry.notas && (
+          <div style={{ marginTop: 4, fontSize: 12, color: "var(--subtext)", fontStyle: "italic" }}>{entry.notas}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   CreateCitaModal (sin cambios)
    ============================================================ */
 function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
   const [propietarioId, setPropietarioId] = useState(propietarios[0]?.id || "");
@@ -191,7 +250,7 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
       const vid = c.veterinario_id ? String(c.veterinario_id) : "null";
       if (!citasByVet[vid]) citasByVet[vid] = [];
       const start = new Date(c.fecha_inicio || c.fecha || "");
-      const end = new Date(start.getTime() + Number(c.duracion_min || c.duracion || 0) * 60000);
+      const end   = new Date(start.getTime() + Number(c.duracion_min || c.duracion || 0) * 60000);
       citasByVet[vid].push({ start, end });
     }
     const slotsByVet = {};
@@ -200,12 +259,12 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
       const vid = String(vet.id);
       slotsByVet[vid] = [];
       for (const w of windows) {
-        const fromMin = Math.max(parseTimeToMinutes(CLINIC_OPEN), parseTimeToMinutes(w.from));
-        const toMin = Math.min(parseTimeToMinutes(CLINIC_CLOSE), parseTimeToMinutes(w.to));
+        const fromMin  = Math.max(parseTimeToMinutes(CLINIC_OPEN), parseTimeToMinutes(w.from));
+        const toMin    = Math.min(parseTimeToMinutes(CLINIC_CLOSE), parseTimeToMinutes(w.to));
         const lastStart = toMin - durationMin;
         for (let t = fromMin; t <= lastStart; t += step) {
           const timeStr = minutesToTimeStr(t);
-          const start = new Date(`${dateStr}T${timeStr}:00`);
+          const start   = new Date(`${dateStr}T${timeStr}:00`);
           if (isNaN(start.getTime())) continue;
           const end = new Date(start.getTime() + durationMin * 60000);
           const vetCitas = citasByVet[vid] || [];
@@ -232,15 +291,13 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
       if (isNaN(dObj.getTime())) return;
       if (dObj.getDay() === 0) {
         setErrors(["La clínica está cerrada los domingos. Si es una urgencia, llame por teléfono."]);
-        setFecha("");
-        return;
+        setFecha(""); return;
       }
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
       if (dObj < todayStart) {
         setErrors(["No se pueden agendar citas en días pasados."]);
-        setFecha("");
-        return;
+        setFecha(""); return;
       }
       setErrors([]);
       setIsGeneratingSlots(true);
@@ -253,13 +310,13 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
             usedSlotsByVet = res.data.data.slotsByVet;
           } else {
             const cRes = await expressApi.get(`/citas?page=1&limit=1000`);
-            const all = cRes.data?.data || [];
+            const all  = cRes.data?.data || [];
             const vetList = veterinarioId ? veterinarios.filter(v => String(v.id) === String(veterinarioId)) : veterinarios;
             usedSlotsByVet = generateSlotsLocal(fecha, tipo, vetList, all).slotsByVet;
           }
         } catch {
           const cRes = await expressApi.get(`/citas?page=1&limit=1000`);
-          const all = cRes.data?.data || [];
+          const all  = cRes.data?.data || [];
           const vetList = veterinarioId ? veterinarios.filter(v => String(v.id) === String(veterinarioId)) : veterinarios;
           usedSlotsByVet = generateSlotsLocal(fecha, tipo, vetList, all).slotsByVet;
         }
@@ -285,14 +342,14 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     const d = new Date(dtLocal);
     if (isNaN(d.getTime())) return null;
     const pad = n => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
   const validate = () => {
     const e = [];
     if (!propietarioId) e.push("Propietario requerido.");
-    if (!mascotaId) e.push("Mascota requerida.");
-    if (!fechaHora) e.push("Debe seleccionar una franja horaria disponible.");
+    if (!mascotaId)     e.push("Mascota requerida.");
+    if (!fechaHora)     e.push("Debe seleccionar una franja horaria disponible.");
     if (!duracion || Number(duracion) <= 0) e.push("Duración inválida.");
     if (fechaHora) {
       const dt = new Date(fechaHora);
@@ -310,17 +367,16 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     setLoading(true);
     try {
       const payload = {
-        mascota_id: Number(mascotaId),
+        mascota_id:     Number(mascotaId),
         propietario_id: Number(propietarioId),
         veterinario_id: veterinarioId ? Number(veterinarioId) : null,
-        tipo_consulta: tipo,
-        motivo: motivo || null,
-        fecha_inicio: toSQLDatetime(fechaHora),
-        duracion_min: Number(duracion),
+        tipo_consulta:  tipo,
+        motivo:         motivo || null,
+        fecha_inicio:   toSQLDatetime(fechaHora),
+        duracion_min:   Number(duracion),
       };
       const res = await expressApi.post("/citas", payload);
-      const created = res.data?.data || res.data;
-      onCreated && onCreated(created);
+      onCreated && onCreated(res.data?.data || res.data);
       onClose();
     } catch (err) {
       if (err?.response?.status === 409) {
@@ -336,7 +392,9 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
   const renderSlotsForVet = (vet) => {
     if (!vet) return null;
     const list = slotsByVet[String(vet.id)] || [];
-    if (!list.length) return <div className="small-muted" style={{ fontStyle: "italic" }}>Sin horarios disponibles para este veterinario / tipo</div>;
+    if (!list.length) return (
+      <div className="small-muted" style={{ fontStyle: "italic" }}>Sin horarios disponibles para este veterinario / tipo</div>
+    );
     return (
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {list.map(s => {
@@ -446,7 +504,9 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
                       background: "rgba(255,255,255,0.02)",
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                        <div style={{ fontWeight: 700 }}>👨‍⚕️ {v.nombre} <small style={{ color: "var(--subtext)", fontWeight: 400 }}>{v.email}</small></div>
+                        <div style={{ fontWeight: 700 }}>
+                          👨‍⚕️ {v.nombre} <small style={{ color: "var(--subtext)", fontWeight: 400 }}>{v.email}</small>
+                        </div>
                       </div>
                       {renderSlotsForVet(v)}
                     </div>
@@ -457,7 +517,7 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
           )}
           <div style={{ marginTop: 10 }}>
             <small style={{ color: "var(--subtext)" }}>
-              Lun a sáb. Si eliges "Cualquiera", al picar una franja se asigna automáticamente al veterinario de esa columna (no permite doble reserva en un mismo doctor).
+              Lun a sáb. Si eliges "Cualquiera", al picar una franja se asigna automáticamente al veterinario de esa columna.
             </small>
           </div>
         </div>
@@ -479,14 +539,26 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
 }
 
 /* ============================================================
-   CitaDetailModal (FUNCIONALIDAD INTACTA, VISUAL NUEVO)
+   CitaDetailModal — con historial de cambios integrado
    ============================================================ */
 function CitaDetailModal({ cita, onClose, onUpdated }) {
+  const [log, setLog]             = useState([]);
+  const [loadingLog, setLoadingLog] = useState(false);
+
+  useEffect(() => {
+    if (!cita?.id) return;
+    setLoadingLog(true);
+    expressApi.get(`/citas/${cita.id}/log`)
+      .then(res => setLog(res.data?.data || []))
+      .catch(() => setLog([]))
+      .finally(() => setLoadingLog(false));
+  }, [cita?.id]);
+
   if (!cita) return null;
-  const fechaStr = cita.fecha_inicio ? new Date(cita.fecha_inicio).toLocaleString() : "-";
+  const fechaStr    = cita.fecha_inicio ? new Date(cita.fecha_inicio).toLocaleString() : "-";
   const lowerEstado = (cita.estado || "").toLowerCase();
-  const isTerminal = lowerEstado === "completada" || lowerEstado === "cancelada";
-  const tipoCfg = TIPO_OPTIONS.find(t => t.value === (cita.tipo_consulta || "").toLowerCase());
+  const isTerminal  = lowerEstado === "completada" || lowerEstado === "cancelada";
+  const tipoCfg     = TIPO_OPTIONS.find(t => t.value === (cita.tipo_consulta || "").toLowerCase());
 
   const changeStatus = async (estado, confirmMsg) => {
     if (isTerminal) return;
@@ -505,12 +577,14 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
       title={`${tipoCfg?.icon || "📅"} ${cita.tipo_consulta || "Cita"}`}
       subtitle={cita.mascota_nombre || ""}
       onClose={onClose}
-      maxWidth={680}
+      maxWidth={700}
     >
+      {/* Estado actual */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
         <StatusBadge estado={cita.estado} />
       </div>
 
+      {/* Detalles */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--subtext)", letterSpacing: 0.5 }}>FECHA</div>
@@ -539,6 +613,7 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
         }}>{cita.motivo || "—"}</div>
       </div>
 
+      {/* Acciones */}
       {!isTerminal && (
         <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {lowerEstado !== "confirmada" && (
@@ -547,7 +622,7 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
           <button className="btn btn-success" onClick={() => changeStatus("completada", "¿Marcar esta cita como completada? Esta acción es final.")}>
             🏁 Completada
           </button>
-          <button className="btn btn-danger" onClick={() => changeStatus("cancelada", '¿Cancelar esta cita? Pasará al estado "cancelada".')}>
+          <button className="btn btn-danger" onClick={() => changeStatus("cancelada", '¿Cancelar esta cita?')}>
             ✖️ Cancelar cita
           </button>
         </div>
@@ -557,15 +632,47 @@ function CitaDetailModal({ cita, onClose, onUpdated }) {
           Esta cita ya está en un estado final y no admite cambios.
         </div>
       )}
+
+      {/* ── HISTORIAL DE CAMBIOS ── */}
+      <div style={{
+        marginTop: 24, paddingTop: 18,
+        borderTop: "1px solid rgba(255,255,255,0.07)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>📋 Historial de cambios</span>
+          {!loadingLog && (
+            <span style={{
+              fontSize: 11, color: "var(--subtext)", background: "rgba(255,255,255,0.06)",
+              padding: "2px 8px", borderRadius: 999,
+            }}>
+              {log.length} {log.length === 1 ? "evento" : "eventos"}
+            </span>
+          )}
+        </div>
+
+        {loadingLog ? (
+          <div className="small-muted">Cargando historial...</div>
+        ) : log.length === 0 ? (
+          <div className="small-muted" style={{ fontStyle: "italic" }}>
+            Sin eventos registrados. Los cambios futuros aparecerán aquí.
+          </div>
+        ) : (
+          <div>
+            {log.map((entry, i) => (
+              <LogEntry key={entry.id} entry={entry} isLast={i === log.length - 1} />
+            ))}
+          </div>
+        )}
+      </div>
     </ModalBase>
   );
 }
 
 /* ============================================================
-   CitaCard — tarjeta con banda superior por estado
+   CitaCard (sin cambios)
    ============================================================ */
 function CitaCard({ cita, onOpen }) {
-  const cfg = STATUS_CONFIG[(cita.estado || "").toLowerCase()] || STATUS_CONFIG.pendiente;
+  const cfg     = STATUS_CONFIG[(cita.estado || "").toLowerCase()] || STATUS_CONFIG.pendiente;
   const tipoCfg = TIPO_OPTIONS.find(t => t.value === (cita.tipo_consulta || "").toLowerCase());
   const fechaObj = cita.fecha_inicio ? new Date(cita.fecha_inicio) : null;
   return (
@@ -586,8 +693,7 @@ function CitaCard({ cita, onOpen }) {
 
         <div style={{
           display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,
-          marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)",
-          fontSize: 13,
+          marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 13,
         }}>
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", letterSpacing: 0.5 }}>📅 FECHA</div>
@@ -612,28 +718,27 @@ function CitaCard({ cita, onOpen }) {
 }
 
 /* ============================================================
-   PÁGINA PRINCIPAL
+   PÁGINA PRINCIPAL (sin cambios)
    ============================================================ */
 export default function CitasPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [citas, setCitas] = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [citas, setCitas]             = useState([]);
   const [propietarios, setPropietarios] = useState([]);
   const [veterinarios, setVeterinarios] = useState([]);
-  const [page, setPage] = useState(1);
-  const [limit] = useState(50);
-  const [total, setTotal] = useState(0);
+  const [page, setPage]               = useState(1);
+  const [limit]                       = useState(50);
+  const [total, setTotal]             = useState(0);
 
-  const [filterProp, setFilterProp] = useState("");
-  const [filterVet, setFilterVet] = useState("");
+  const [filterProp, setFilterProp]   = useState("");
+  const [filterVet, setFilterVet]     = useState("");
   const [filterEstado, setFilterEstado] = useState("");
-  const [filterDate, setFilterDate] = useState("");
-  const [search, setSearch] = useState("");
+  const [filterDate, setFilterDate]   = useState("");
+  const [search, setSearch]           = useState("");
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [detail, setDetail] = useState(null);
+  const [showCreate, setShowCreate]   = useState(false);
+  const [detail, setDetail]           = useState(null);
 
-  // Acceso: admin (doctores) y user (recepcionistas)
   useEffect(() => {
     const raw = localStorage.getItem("user");
     if (!raw) return router.replace("/");
@@ -682,31 +787,25 @@ export default function CitasPage() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return citas.filter(c => {
-      if (filterProp && String(c.propietario_id) !== String(filterProp)) return false;
-      if (filterVet && String(c.veterinario_id || "") !== String(filterVet)) return false;
-      if (filterEstado && (c.estado || "").toLowerCase() !== filterEstado) return false;
+      if (filterProp   && String(c.propietario_id)   !== String(filterProp))   return false;
+      if (filterVet    && String(c.veterinario_id || "") !== String(filterVet)) return false;
+      if (filterEstado && (c.estado || "").toLowerCase() !== filterEstado)      return false;
       if (filterDate) {
         const d = new Date(c.fecha_inicio || c.fecha || "");
         if (isNaN(d.getTime())) return false;
-        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         if (iso !== filterDate) return false;
       }
       if (term) {
-        const blob = `${c.mascota_nombre || ""} ${c.propietario_nombre || ""} ${c.veterinario_nombre || ""} ${c.tipo_consulta || ""} ${c.motivo || ""}`.toLowerCase();
+        const blob = `${c.mascota_nombre||""} ${c.propietario_nombre||""} ${c.veterinario_nombre||""} ${c.tipo_consulta||""} ${c.motivo||""}`.toLowerCase();
         if (!blob.includes(term)) return false;
       }
       return true;
     });
   }, [citas, filterProp, filterVet, filterEstado, filterDate, search]);
 
-  const onCreated = (c) => {
-    setCitas(prev => [c, ...prev]);
-    setTotal(t => t + 1);
-  };
-
-  const clearFilters = () => {
-    setFilterProp(""); setFilterVet(""); setFilterEstado(""); setFilterDate(""); setSearch("");
-  };
+  const onCreated = (c) => { setCitas(prev => [c, ...prev]); setTotal(t => t + 1); };
+  const clearFilters = () => { setFilterProp(""); setFilterVet(""); setFilterEstado(""); setFilterDate(""); setSearch(""); };
 
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
@@ -726,14 +825,11 @@ export default function CitasPage() {
       </div>
 
       {/* MÉTRICAS */}
-      <div className="metrics" style={{
-        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-        gap: 12, marginBottom: 20,
-      }}>
-        <StatCard icon="⏳" label="Pendientes"  value={counts.pendiente}  color={STATUS_CONFIG.pendiente.color}  active={filterEstado === "pendiente"}  onClick={() => setFilterEstado(filterEstado === "pendiente" ? "" : "pendiente")} />
-        <StatCard icon="✅" label="Confirmadas" value={counts.confirmada} color={STATUS_CONFIG.confirmada.color} active={filterEstado === "confirmada"} onClick={() => setFilterEstado(filterEstado === "confirmada" ? "" : "confirmada")} />
-        <StatCard icon="🏁" label="Completadas" value={counts.completada} color={STATUS_CONFIG.completada.color} active={filterEstado === "completada"} onClick={() => setFilterEstado(filterEstado === "completada" ? "" : "completada")} />
-        <StatCard icon="✖️" label="Canceladas"  value={counts.cancelada}  color={STATUS_CONFIG.cancelada.color}  active={filterEstado === "cancelada"}  onClick={() => setFilterEstado(filterEstado === "cancelada" ? "" : "cancelada")} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
+        <StatCard icon="⏳" label="Pendientes"  value={counts.pendiente}  color={STATUS_CONFIG.pendiente.color}  active={filterEstado==="pendiente"}  onClick={() => setFilterEstado(filterEstado==="pendiente"  ? "" : "pendiente")} />
+        <StatCard icon="✅" label="Confirmadas" value={counts.confirmada} color={STATUS_CONFIG.confirmada.color} active={filterEstado==="confirmada"} onClick={() => setFilterEstado(filterEstado==="confirmada" ? "" : "confirmada")} />
+        <StatCard icon="🏁" label="Completadas" value={counts.completada} color={STATUS_CONFIG.completada.color} active={filterEstado==="completada"} onClick={() => setFilterEstado(filterEstado==="completada" ? "" : "completada")} />
+        <StatCard icon="✖️" label="Canceladas"  value={counts.cancelada}  color={STATUS_CONFIG.cancelada.color}  active={filterEstado==="cancelada"}  onClick={() => setFilterEstado(filterEstado==="cancelada"  ? "" : "cancelada")} />
       </div>
 
       {/* FILTROS */}
@@ -774,33 +870,25 @@ export default function CitasPage() {
         </div>
       ) : (
         <>
-          <div style={{
-            display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-            gap: 14,
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
             {filtered.map(c => <CitaCard key={c.id} cita={c} onOpen={() => setDetail(c)} />)}
           </div>
-
           <div style={{
             marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center",
             paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)",
           }}>
             <div className="small-muted">Mostrando {filtered.length} de {total}</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button className="btn-ghost" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>← Anterior</button>
+              <button className="btn-ghost" onClick={() => setPage(Math.max(1, page-1))} disabled={page===1}>← Anterior</button>
               <strong style={{ padding: "0 12px" }}>{page}</strong>
-              <button className="btn-ghost" onClick={() => setPage(page + 1)}>Siguiente →</button>
+              <button className="btn-ghost" onClick={() => setPage(page+1)}>Siguiente →</button>
             </div>
           </div>
         </>
       )}
 
       {showCreate && (
-        <CreateCitaModal
-          propietarios={propietarios}
-          onClose={() => setShowCreate(false)}
-          onCreated={onCreated}
-        />
+        <CreateCitaModal propietarios={propietarios} onClose={() => setShowCreate(false)} onCreated={onCreated} />
       )}
 
       {detail && (
