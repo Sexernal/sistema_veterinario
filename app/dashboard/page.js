@@ -1,4 +1,3 @@
-// app/dashboard/page.js
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -291,7 +290,7 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
           <input className="input" inputMode="tel" value={form.telefono}
             onChange={e => onTelefonoChange(e.target.value)}
             placeholder="+506 8888-9999" required />
-          <small style={{ color: "var(--subtext)" }}>Mínimo 7 dígitos. Permite + - ( ) . y espacios.</small>
+          <small style={{ color: "var(--subtext)" }}>Mínimo 8 dígitos. Favor seguir el formato mostrado.</small>
         </label>
 
         <hr style={{ margin: "14px 0", borderColor: "rgba(255,255,255,0.05)" }} />
@@ -341,6 +340,8 @@ function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
   const validate = () => {
     const e = [];
     if (!form.nombre.trim()) e.push("Nombre es requerido.");
@@ -364,37 +365,42 @@ function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
   };
 
   return (
-    <ModalBase title="Crear mascota" subtitle="Registra el nuevo paciente veterinario" onClose={onClose} maxWidth={560}>
-      <form onSubmit={submit}>
-        <label style={{ display: "block", marginTop: 10 }}>
+    <ModalBase title="Crear mascota" subtitle="Datos del paciente veterinario" onClose={onClose} maxWidth={560}>
+      <form onSubmit={submit} style={{ marginTop: 14 }}>
+        <label style={{ display: "block" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Nombre</div>
-          <input className="input" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} required />
+          <input className="input" value={form.nombre} onChange={set("nombre")} required />
         </label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
           <label>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Especie</div>
-            <input className="input" value={form.especie} onChange={e => setForm(f => ({ ...f, especie: e.target.value }))} />
+            <input className="input" value={form.especie} onChange={set("especie")} placeholder="Perro, Gato..." />
           </label>
           <label>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Raza</div>
-            <input className="input" value={form.raza} onChange={e => setForm(f => ({ ...f, raza: e.target.value }))} />
+            <input className="input" value={form.raza} onChange={set("raza")} />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Edad (años)</div>
+            <input className="input" type="number" min="0" value={form.edad} onChange={set("edad")} />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Propietario</div>
+            <select className="input" value={form.owner_id} onChange={set("owner_id")} required>
+              <option value="">-- Seleccionar --</option>
+              {propietarios.map(o => (
+                <option key={o.id} value={o.id}>{o.nombre} — {o.email}</option>
+              ))}
+            </select>
           </label>
         </div>
-        <label style={{ display: "block", marginTop: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Edad (años)</div>
-          <input className="input" type="number" value={form.edad} onChange={e => setForm(f => ({ ...f, edad: e.target.value }))} />
-        </label>
-        <label style={{ display: "block", marginTop: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Propietario</div>
-          <select className="input" value={form.owner_id} onChange={e => setForm(f => ({ ...f, owner_id: e.target.value }))}>
-            <option value="">-- Seleccionar propietario --</option>
-            {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.email}</option>)}
-          </select>
-        </label>
+
         <label style={{ display: "block", marginTop: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Observaciones</div>
-          <textarea className="input" rows={3} value={form.historial_medico} onChange={e => setForm(f => ({ ...f, historial_medico: e.target.value }))} />
+          <textarea className="input" rows={3} value={form.historial_medico} onChange={set("historial_medico")} placeholder="Notas generales del historial..." />
         </label>
+
         <ErrorList errors={errors} />
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           <button className="btn" type="submit" disabled={loading}>{loading ? "Creando..." : "Crear mascota"}</button>
@@ -479,7 +485,6 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
     const CLINIC_OPEN = "07:00", CLINIC_CLOSE = "17:00", step = 15;
     const citasByVet = {};
     for (const c of existingCitas) {
-      
       const vid = c.veterinario_id ? String(c.veterinario_id) : "null";
       if (!citasByVet[vid]) citasByVet[vid] = [];
       const start = new Date(c.fecha_inicio || c.fecha || "");
@@ -917,6 +922,7 @@ export default function DashboardPage() {
           <NavCard icon="👤" title="Propietarios" subtitle="Ver y gestionar todos los dueños de mascotas" onClick={() => router.push("/propietarios")} />
           <NavCard icon="🐾" title="Mascotas"     subtitle="Ver y gestionar todos los pacientes"           onClick={() => router.push("/mascotas")} />
           <NavCard icon="📅" title="Citas"        subtitle="Ver y gestionar todas las citas"               onClick={() => router.push("/citas")} />
+          <NavCard icon="🧾" title="Facturación" subtitle="Comandas y cobros de consultas" onClick={() => router.push("/facturacion")} />
         </div>
 
         {/* Acciones rápidas */}
