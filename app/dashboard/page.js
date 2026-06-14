@@ -258,7 +258,7 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
         {/* CEDULA: campo editable en crear (opcional) */}
         {!isEditing && (
           <label style={{ display: "block", marginTop: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Cédula (opcional)</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Cédula</div>
             <input
               className="input"
               inputMode="numeric"
@@ -274,7 +274,7 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
         )}
 
         {[
-          { label: "Nombre",    key: "nombre",    type: "text"  },
+          { label: "Nombre completo",    key: "nombre",    type: "text"  },
           { label: "Email",     key: "email",     type: "email" },
           { label: "Dirección", key: "direccion", type: "text"  },
         ].map(({ label, key, type }) => (
@@ -290,13 +290,13 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
           <input className="input" inputMode="tel" value={form.telefono}
             onChange={e => onTelefonoChange(e.target.value)}
             placeholder="+506 8888-9999" required />
-          <small style={{ color: "var(--subtext)" }}>Mínimo 8 dígitos. Favor seguir el formato mostrado.</small>
+          <small style={{ color: "var(--subtext)" }}>8 dígitos. Favor seguir el formato mostrado.</small>
         </label>
 
         <hr style={{ margin: "14px 0", borderColor: "rgba(255,255,255,0.05)" }} />
         <label style={{ display: "block", marginTop: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>
-            {isEditing ? "Nueva contraseña (opcional)" : "Contraseña (opcional)"}
+            {isEditing ? "Nueva contraseña (opcional)" : "Contraseña"}
           </div>
           <input className="input" type="password" value={password}
             onChange={e => setPassword(e.target.value)}
@@ -309,7 +309,7 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
           <small style={{ color: "var(--subtext)" }}>
             {isEditing
               ? "Solo si deseas cambiar la contraseña del propietario."
-              : "Solo si el propietario va a iniciar sesión en la app móvil."}
+              : "Para que el usuario pueda iniciar sesión desde la app móvil."}
           </small>
         </label>
         {password && (
@@ -866,7 +866,7 @@ export default function DashboardPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 24 }}>🐾</span>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 17, lineHeight: 1.1 }}>VetCare</div>
+            <div style={{ fontWeight: 900, fontSize: 17, lineHeight: 1.1 }}>Veterinaria Cañas</div>
             <div style={{ fontSize: 11, color: "var(--subtext)" }}>Sistema veterinario</div>
           </div>
         </div>

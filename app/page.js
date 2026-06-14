@@ -124,7 +124,7 @@ export default function LoginPage() {
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             fontSize: 34, marginBottom: 14, boxShadow: "0 8px 32px rgba(96,165,250,0.25)",
           }}>🐾</div>
-          <div style={{ fontSize: 26, fontWeight: 900, color: "#e6eef8", letterSpacing: "-0.5px" }}>VetCare</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: "#e6eef8", letterSpacing: "-0.5px" }}>Veterinaria Cañas</div>
           <div style={{ color: "#9fb0c8", fontSize: 13, marginTop: 4 }}>Sistema de gestión veterinaria</div>
         </div>
 
@@ -221,7 +221,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ textAlign: "center", marginTop: 20, color: "#6b7fa0", fontSize: 12 }}>
-          VetCare © {new Date().getFullYear()} — Todos los derechos reservados
+          Veterinaria Cañas © {new Date().getFullYear()} — Todos los derechos reservados
         </div>
       </div>
 
@@ -366,7 +366,7 @@ export default function LoginPage() {
                   </label>
 
                   <div style={{ marginTop: 8, fontSize: 12, color: "var(--subtext)", lineHeight: 1.5 }}>
-                    💡 El usuario podrá completar su nombre, Gmail, teléfono y dirección desde su perfil al iniciar sesión.
+                    💡 El usuario podrá agregar el resto de sus datos de su perfil al iniciar sesión.
                   </div>
 
                   {createError && (

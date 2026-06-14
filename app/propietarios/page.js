@@ -123,13 +123,13 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
         )}
         {!isEditing && (
           <label style={{ display:"block", marginBottom:4 }}>
-            <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>Cédula (opcional)</div>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>Cédula</div>
             <input className="input" inputMode="numeric" maxLength={9} value={cedula}
               onChange={e=>onCedulaChange(e.target.value)} placeholder="000000000" />
             <small style={{ color:"var(--subtext)" }}>9 dígitos. Requerida para inicio de sesión en la app móvil.</small>
           </label>
         )}
-        {[{label:"Nombre",key:"nombre",type:"text"},{label:"Email",key:"email",type:"email"},{label:"Dirección",key:"direccion",type:"text"}]
+        {[{label:"Nombre Completo",key:"nombre",type:"text"},{label:"Email",key:"email",type:"email"},{label:"Dirección",key:"direccion",type:"text"}]
           .map(({label,key,type})=>(
           <label key={key} style={{ display:"block", marginTop:10 }}>
             <div style={{ fontSize:13, fontWeight:600 }}>{label}</div>
@@ -141,14 +141,14 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
           <div style={{ fontSize:13, fontWeight:600 }}>Teléfono</div>
           <input className="input" inputMode="tel" value={form.telefono}
             onChange={e=>onTelefonoChange(e.target.value)} placeholder="+506 8888-9999" required />
-          <small style={{ color:"var(--subtext)" }}>Mínimo 7 dígitos. Permite + - ( ) . y espacios.</small>
+          <small style={{ color:"var(--subtext)" }}>8 dígitos. Favor seguir el formato mostrado.</small>
         </label>
         <hr style={{ margin:"14px 0", borderColor:"rgba(255,255,255,0.05)" }} />
         <label style={{ display:"block", marginTop:10 }}>
-          <div style={{ fontSize:13, fontWeight:600 }}>{isEditing?"Nueva contraseña (opcional)":"Contraseña (opcional)"}</div>
+          <div style={{ fontSize:13, fontWeight:600 }}>{isEditing?"Nueva contraseña (opcional)":"Contraseña"}</div>
           <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)}
             placeholder={isEditing?"Dejar vacío para no cambiar":"Dejar vacío si no necesita acceso a la app móvil"} />
-          <small style={{ color:"var(--subtext)" }}>{isEditing?"Solo si deseas cambiar la contraseña del propietario.":"Solo si el propietario va a iniciar sesión en la app móvil."}</small>
+          <small style={{ color:"var(--subtext)" }}>{isEditing?"Solo si deseas cambiar la contraseña del propietario.":"Para que el usuario pueda iniciar sesión desde la app móvil."}</small>
         </label>
         {password && (
           <label style={{ display:"block", marginTop:10 }}>

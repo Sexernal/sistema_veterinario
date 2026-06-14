@@ -106,7 +106,7 @@ export default function ProfilePage() {
             {isDoctor ? "Veterinario" : "Recepcionista"} · Cédula {user.cedula || "—"}
           </div>
         </div>
-        <button className="btn-ghost" onClick={() => router.push("/dashboard")}>← Dashboard</button>
+        <button className="btn-ghost" onClick={() => router.push("/dashboard")}>← Volver</button>
       </div>
 
       <div className="card" style={{ padding: 24 }}>

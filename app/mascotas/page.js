@@ -853,7 +853,7 @@ export default function MascotasPage() {
       }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flex:"0 0 auto" }}>
           <button className="btn-ghost" onClick={()=>router.push("/dashboard")}
-            style={{ padding:"6px 10px", fontSize:13 }}>← Dashboard</button>
+            style={{ padding:"6px 10px", fontSize:13 }}>← Volver</button>
           <div style={{ width:1, height:24, background:"rgba(255,255,255,0.06)" }} />
           <span style={{ fontWeight:900, fontSize:17 }}>Mascotas</span>
           <span style={{

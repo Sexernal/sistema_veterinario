@@ -813,7 +813,7 @@ export default function CitasPage() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" onClick={() => setShowCreate(true)}>+ Nueva cita</button>
-          <button className="btn-ghost" onClick={() => router.push("/dashboard")}>← Dashboard</button>
+          <button className="btn-ghost" onClick={() => router.push("/dashboard")}>← Volver</button>
         </div>
       </div>
 
