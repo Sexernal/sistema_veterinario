@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import VacunasModal from "./VacunasModal";
 
 // ─── Helper: icono por especie ────────────────────────────────────────────────
 const SPECIES_ICONS = {
@@ -767,6 +768,7 @@ export default function MascotasPage() {
   const [speciesFilter, setSpeciesFilter] = useState("");
   const [modal, setModal]             = useState({ open:false, pet:null });
   const [fichasTarget, setFichasTarget] = useState(null);
+  const [vacunasTarget, setVacunasTarget] = useState(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -885,6 +887,7 @@ export default function MascotasPage() {
               onEdit={()=>openEdit(p)}
               onDelete={()=>handleDelete(p.id)}
               onFichas={()=>setFichasTarget(p)}
+              onVacunas={()=>setVacunasTarget(p)}
             />
           ))}
         </div>
@@ -896,12 +899,15 @@ export default function MascotasPage() {
       {fichasTarget && (
         <FichasModal pet={fichasTarget} onClose={()=>setFichasTarget(null)} isAdmin={isAdmin} />
       )}
+            {vacunasTarget && (
+        <VacunasModal pet={vacunasTarget} onClose={()=>setVacunasTarget(null)} isAdmin={isAdmin} />
+      )}
     </div>
   );
 }
 
 // ─── PetCard ──────────────────────────────────────────────────────────────────
-function PetCard({ pet, onEdit, onDelete, onFichas, isAdmin }) {
+function PetCard({ pet, onEdit, onDelete, onFichas, onVacunas, isAdmin }) {
   const icon      = getSpeciesIcon(pet.especie);
   const ownerName = pet.propietario_nombre || pet.owner_name || "-";
 
@@ -941,19 +947,28 @@ function PetCard({ pet, onEdit, onDelete, onFichas, isAdmin }) {
 
       <div style={{
         padding:"10px 18px", borderTop:"1px solid rgba(255,255,255,0.04)",
-        display:"flex", gap:8,
+        display:"flex", flexDirection:"column", gap:8,
       }}>
-        <button className="btn" onClick={onFichas}
-          style={{ flex:1, padding:"7px 0", fontSize:12,
-            background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.25)", color:"var(--accent-2)" }}>
-          📋 Fichas
-        </button>
-        <button className="btn" onClick={onEdit} style={{ flex:1, padding:"7px 0", fontSize:13 }}>
-          Editar
-        </button>
-        <button className="btn btn-danger" onClick={onDelete} style={{ flex:1, padding:"7px 0", fontSize:13 }}>
-          Eliminar
-        </button>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn" onClick={onFichas}
+            style={{ flex:1, padding:"7px 0", fontSize:12,
+              background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.25)", color:"var(--accent-2)" }}>
+            📋 Fichas
+          </button>
+          <button className="btn" onClick={onVacunas}
+            style={{ flex:1, padding:"7px 0", fontSize:12,
+              background:"rgba(167,139,250,0.1)", border:"1px solid rgba(167,139,250,0.3)", color:"#a78bfa" }}>
+            💉 Vacunas
+          </button>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn" onClick={onEdit} style={{ flex:1, padding:"7px 0", fontSize:13 }}>
+            Editar
+          </button>
+          <button className="btn btn-danger" onClick={onDelete} style={{ flex:1, padding:"7px 0", fontSize:13 }}>
+            Eliminar
+          </button>
+        </div>
       </div>
     </div>
   );
