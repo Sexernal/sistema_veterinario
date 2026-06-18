@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import VacunasModal from "../mascotas/VacunasModal";
 
 // ─── Helper: icono por especie ────────────────────────────────────────────────
 const SPECIES_ICONS = {
@@ -10,6 +11,32 @@ const SPECIES_ICONS = {
   serpiente:"🐍", hamster:"🐹", tortuga:"🐢", pez:"🐟", caballo:"🐴",
 };
 const getSpeciesIcon = (especie) => SPECIES_ICONS[(especie||"").toLowerCase()] || "🐾";
+
+function toDateInput(val) {
+  if (!val) return "";
+  if (typeof val === "string") return val.slice(0, 10);
+  try { return new Date(val).toISOString().slice(0, 10); } catch { return ""; }
+}
+
+function calcEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const ymd = typeof fechaNacimiento === "string" ? fechaNacimiento.slice(0, 10) : null;
+  const nac = ymd ? new Date(ymd + "T00:00:00") : new Date(fechaNacimiento);
+  if (isNaN(nac.getTime())) return null;
+  const hoy = new Date();
+  if (nac > hoy) return null;
+  let years  = hoy.getFullYear() - nac.getFullYear();
+  let months = hoy.getMonth()    - nac.getMonth();
+  if (hoy.getDate() < nac.getDate()) months -= 1;
+  if (months < 0) { years -= 1; months += 12; }
+  if (years <= 0 && months <= 0) {
+    const dias = Math.max(0, Math.floor((hoy - nac) / 86400000));
+    return dias === 0 ? "Recién nacido" : `${dias} día${dias !== 1 ? "s" : ""}`;
+  }
+  if (years === 0)  return `${months} ${months === 1 ? "mes" : "meses"}`;
+  if (months === 0) return `${years} año${years !== 1 ? "s" : ""}`;
+  return `${years} año${years !== 1 ? "s" : ""} y ${months} ${months === 1 ? "mes" : "meses"}`;
+}
 
 // ─── ModalBase con scroll ─────────────────────────────────────────────────────
 function ModalBase({ title, subtitle, onClose, children, maxWidth = 560 }) {
@@ -81,7 +108,6 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
     if (form.direccion.trim().length < 5) e.push("Dirección requerida (mínimo 5 caracteres).");
     if (!isEditing && cedula && cedula.length !== 9) e.push("Cédula debe tener exactamente 9 dígitos.");
     if (password) {
-      if (password.length < 8)         e.push("Contraseña: mínimo 8 caracteres.");
       if (password !== confirmPassword) e.push("Las contraseñas no coinciden.");
     }
     setErrors(e);
@@ -174,7 +200,7 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
   const isEditing = !!initial?.id;
   const [form, setForm] = useState({
     nombre:initial?.nombre||"", especie:initial?.especie||"", raza:initial?.raza||"",
-    edad:initial?.edad||"", historial_medico:initial?.historial_medico||"",
+    fecha_nacimiento:toDateInput(initial?.fecha_nacimiento), historial_medico:initial?.historial_medico||"",
     owner_id:initial?.owner_id||owners[0]?.id||"",
   });
   const [errors,setErrors]   = useState([]);
@@ -191,7 +217,7 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
     ev.preventDefault(); if (!validate()) return;
     setLoading(true);
     try {
-      const payload = {...form, edad:form.edad?Number(form.edad):null, owner_id:Number(form.owner_id)};
+      const payload = {...form, fecha_nacimiento:form.fecha_nacimiento||null, owner_id:Number(form.owner_id)};
       const res = isEditing
         ? await expressApi.put(`/mascotas/${initial.id}`, payload)
         : await expressApi.post("/mascotas", payload);
@@ -217,9 +243,9 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
           ))}
         </div>
         <label style={{ display:"block", marginTop:10 }}>
-          <div style={{ fontSize:13, fontWeight:600 }}>Edad (años)</div>
-          <input className="input" type="number" min="0" value={form.edad}
-            onChange={e=>setForm(f=>({...f,edad:e.target.value}))} />
+          <div style={{ fontSize:13, fontWeight:600 }}>Fecha de nacimiento</div>
+          <input className="input" type="date" value={form.fecha_nacimiento}
+            onChange={e=>setForm(f=>({...f,fecha_nacimiento:e.target.value}))} />
         </label>
         <label style={{ display:"block", marginTop:10 }}>
           <div style={{ fontSize:13, fontWeight:600 }}>Propietario</div>
@@ -879,7 +905,8 @@ export default function PropietariosPage() {
   const [selectedOwnerId, setSelectedOwnerId] = useState(null);
   const [ownerModal, setOwnerModal]   = useState(null);
   const [petModal,   setPetModal]     = useState(null);
-  const [fichasTarget, setFichasTarget] = useState(null);
+  const [fichasTarget, setFichasTarget]   = useState(null);
+  const [vacunasTarget, setVacunasTarget] = useState(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -1104,7 +1131,7 @@ export default function PropietariosPage() {
                             {p.especie && <span style={{ marginLeft:6, fontSize:12, color:"var(--subtext)", fontWeight:400 }}>({p.especie})</span>}
                           </div>
                           <div className="small-muted">
-                            {[p.raza, p.edad!=null?`${p.edad} años`:null].filter(Boolean).join(" · ")}
+                            {[p.raza, calcEdad(p.fecha_nacimiento) || (p.edad!=null?`${p.edad} años`:null)].filter(Boolean).join(" · ")}
                           </div>
                           {p.historial_medico && (
                             <div style={{ marginTop:4, fontSize:12, color:"var(--subtext)", lineHeight:1.4 }}>
@@ -1113,14 +1140,19 @@ export default function PropietariosPage() {
                           )}
                         </div>
                       </div>
-                      <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                      <div style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
                         <button className="btn"
-                          style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", color:"var(--accent-2)" }}
+                          style={{ padding:"6px 10px", fontSize:12, background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", color:"var(--accent-2)" }}
                           onClick={()=>setFichasTarget(p)}>
                           📋 Fichas
                         </button>
-                        <button className="btn" onClick={()=>setPetModal(p)}>Editar</button>
-                        <button className="btn-danger" onClick={()=>deletePet(p.id)}>Eliminar</button>
+                        <button className="btn"
+                          style={{ padding:"6px 10px", fontSize:12, background:"rgba(167,139,250,0.1)", border:"1px solid rgba(167,139,250,0.3)", color:"#a78bfa" }}
+                          onClick={()=>setVacunasTarget(p)}>
+                          💉 Vacunas
+                        </button>
+                        <button className="btn" style={{ padding:"6px 10px", fontSize:12 }} onClick={()=>setPetModal(p)}>Editar</button>
+                        <button className="btn-danger" style={{ padding:"6px 10px", fontSize:12 }} onClick={()=>deletePet(p.id)}>Eliminar</button>
                       </div>
                     </div>
                   ))}
@@ -1141,6 +1173,9 @@ export default function PropietariosPage() {
       )}
       {fichasTarget !== null && (
         <FichasModal pet={fichasTarget} onClose={()=>setFichasTarget(null)} isAdmin={isAdmin} />
+      )}
+      {vacunasTarget !== null && (
+        <VacunasModal pet={vacunasTarget} onClose={()=>setVacunasTarget(null)} isAdmin={isAdmin} />
       )}
     </div>
   );

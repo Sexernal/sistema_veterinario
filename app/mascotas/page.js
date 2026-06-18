@@ -19,6 +19,32 @@ function getSpeciesIcon(especie) {
   return "🐾";
 }
 
+function toDateInput(val) {
+  if (!val) return "";
+  if (typeof val === "string") return val.slice(0, 10);
+  try { return new Date(val).toISOString().slice(0, 10); } catch { return ""; }
+}
+
+function calcEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const ymd = typeof fechaNacimiento === "string" ? fechaNacimiento.slice(0, 10) : null;
+  const nac = ymd ? new Date(ymd + "T00:00:00") : new Date(fechaNacimiento);
+  if (isNaN(nac.getTime())) return null;
+  const hoy = new Date();
+  if (nac > hoy) return null;
+  let years  = hoy.getFullYear() - nac.getFullYear();
+  let months = hoy.getMonth()    - nac.getMonth();
+  if (hoy.getDate() < nac.getDate()) months -= 1;
+  if (months < 0) { years -= 1; months += 12; }
+  if (years <= 0 && months <= 0) {
+    const dias = Math.max(0, Math.floor((hoy - nac) / 86400000));
+    return dias === 0 ? "Recién nacido" : `${dias} día${dias !== 1 ? "s" : ""}`;
+  }
+  if (years === 0)  return `${months} ${months === 1 ? "mes" : "meses"}`;
+  if (months === 0) return `${years} año${years !== 1 ? "s" : ""}`;
+  return `${years} año${years !== 1 ? "s" : ""} y ${months} ${months === 1 ? "mes" : "meses"}`;
+}
+
 // ─── ModalBase con scroll ─────────────────────────────────────────────────────
 function ModalBase({ title, subtitle, onClose, children, maxWidth = 560 }) {
   return (
@@ -65,7 +91,7 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
     nombre:           initial?.nombre           || "",
     especie:          initial?.especie          || "",
     raza:             initial?.raza             || "",
-    edad:             initial?.edad             ?? "",
+    fecha_nacimiento: toDateInput(initial?.fecha_nacimiento),
     historial_medico: initial?.historial_medico || "",
     owner_id:         initial?.owner_id         || (owners[0]?.id || ""),
   });
@@ -87,7 +113,7 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
     ev.preventDefault(); if (!validate()) return;
     setLoading(true);
     try {
-      const payload = {...form, edad:form.edad!==""?Number(form.edad):null, owner_id:Number(form.owner_id)};
+      const payload = {...form, fecha_nacimiento: form.fecha_nacimiento || null, owner_id:Number(form.owner_id)};
       const res = isEditing
         ? await expressApi.put(`/mascotas/${initial.id}`, payload)
         : await expressApi.post("/mascotas", payload);
@@ -117,8 +143,8 @@ function PetModal({ onClose, onSaved, owners = [], initial = null }) {
             <input className="input" value={form.raza} onChange={set("raza")} />
           </label>
           <label>
-            <div style={{ fontSize:13, fontWeight:600 }}>Edad (años)</div>
-            <input className="input" type="number" min="0" value={form.edad} onChange={set("edad")} />
+            <div style={{ fontSize:13, fontWeight:600 }}>Fecha de nacimiento</div>
+            <input className="input" type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
           </label>
           <label>
             <div style={{ fontSize:13, fontWeight:600 }}>Propietario</div>
@@ -927,7 +953,7 @@ function PetCard({ pet, onEdit, onDelete, onFichas, onVacunas, isAdmin }) {
           <div style={{ fontWeight:800, fontSize:15, color:"var(--text)" }}>{pet.nombre}</div>
           <div style={{ color:"var(--subtext)", fontSize:13, marginTop:2 }}>
             {[pet.especie,pet.raza].filter(Boolean).join(" · ")||"Sin clasificar"}
-            {pet.edad!=null?` · ${pet.edad} años`:""}
+            {(() => { const t = calcEdad(pet.fecha_nacimiento) || (pet.edad!=null?`${pet.edad} años`:null); return t?` · ${t}`:""; })()}
           </div>
         </div>
       </div>

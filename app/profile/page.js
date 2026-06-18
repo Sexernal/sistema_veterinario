@@ -42,10 +42,11 @@ export default function ProfilePage() {
   const [direccion,       setDireccion]       = useState("");
   const [especialidad,    setEspecialidad]    = useState("");
 
-  const [showPassSection, setShowPassSection] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword,     setNewPassword]     = useState("");
-  const [showNewPass,     setShowNewPass]     = useState(false);
+  const [showPassSection,    setShowPassSection]    = useState(false);
+  const [currentPassword,    setCurrentPassword]    = useState("");
+  const [newPassword,        setNewPassword]        = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPass,        setShowNewPass]        = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [msg,     setMsg]     = useState({ text: "", type: "" }); // type: "success" | "error"
@@ -71,6 +72,7 @@ export default function ProfilePage() {
       if (user?.role === "admin") payload.especialidad = especialidad;
       if (showPassSection && newPassword) {
         if (!currentPassword) { setMsg({ text: "Debes ingresar tu contraseña actual.", type: "error" }); setLoading(false); return; }
+        if (newPassword !== confirmNewPassword) { setMsg({ text: "Las contraseñas no coinciden.", type: "error" }); setLoading(false); return; }
         payload.currentPassword = currentPassword;
         payload.newPassword     = newPassword;
       }
@@ -78,7 +80,7 @@ export default function ProfilePage() {
       const updated = res.data?.data || res.data;
       localStorage.setItem("user", JSON.stringify({ ...user, ...updated }));
       setUser(prev => ({ ...prev, ...updated }));
-      setCurrentPassword(""); setNewPassword(""); setShowPassSection(false);
+      setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword(""); setShowPassSection(false);
       setMsg({ text: "Perfil actualizado correctamente ✓", type: "success" });
     } catch (err) {
       setMsg({ text: err.response?.data?.message || err.message || "Error al guardar.", type: "error" });
@@ -149,7 +151,7 @@ export default function ProfilePage() {
           <SectionHeader icon="🔒" title="Seguridad" />
           <button
             type="button"
-            onClick={() => setShowPassSection(v => !v)}
+            onClick={() => { setShowPassSection(v => !v); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword(""); }}
             className="btn-ghost"
             style={{ marginBottom: 14, fontSize: 13 }}
           >
@@ -159,6 +161,7 @@ export default function ProfilePage() {
           {showPassSection && (
             <div style={{ padding: 14, borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <Field label="CONTRASEÑA ACTUAL" value={currentPassword} onChange={setCurrentPassword} type="password" />
+
               <label style={{ display: "block", marginBottom: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--subtext)", letterSpacing: 0.5, marginBottom: 4 }}>NUEVA CONTRASEÑA</div>
                 <div style={{ position: "relative" }}>
@@ -167,7 +170,7 @@ export default function ProfilePage() {
                     type={showNewPass ? "text" : "password"}
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder="Escribe tu nueva contraseña"
                     style={{ paddingRight: 40 }}
                   />
                   <button
@@ -182,9 +185,20 @@ export default function ProfilePage() {
                     {showNewPass ? "🙈" : "👁️"}
                   </button>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--subtext)", marginTop: 3 }}>
-                  Debe contener: mayúscula, minúscula, número y carácter especial (@$!%*?&)
-                </div>
+              </label>
+
+              <label style={{ display: "block", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--subtext)", letterSpacing: 0.5, marginBottom: 4 }}>CONFIRMAR NUEVA CONTRASEÑA</div>
+                <input
+                  className="input"
+                  type={showNewPass ? "text" : "password"}
+                  value={confirmNewPassword}
+                  onChange={e => setConfirmNewPassword(e.target.value)}
+                  placeholder="Repite la nueva contraseña"
+                />
+                {confirmNewPassword && newPassword !== confirmNewPassword && (
+                  <div style={{ fontSize: 11, color: "#fca5a5", marginTop: 3 }}>Las contraseñas no coinciden.</div>
+                )}
               </label>
             </div>
           )}

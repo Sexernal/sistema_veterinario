@@ -193,16 +193,17 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
       e.push("Teléfono requerido.");
     } else {
       if (/[^0-9+\-\s().]/.test(tel)) e.push("Teléfono: solo dígitos y + - ( ) . espacios.");
-      if ((tel.match(/\d/g) || []).length < 7) e.push("Teléfono: mínimo 7 dígitos.");
+      if ((tel.match(/\d/g) || []).length < 8) e.push("Teléfono: mínimo 8 dígitos.");
     }
     if (form.direccion.trim().length < 5)
       e.push("Dirección requerida (mínimo 5 caracteres).");
     if (!isEditing && cedula && cedula.length !== 9)
       e.push("Cédula debe tener exactamente 9 dígitos.");
     if (password) {
-      if (password.length < 8)         e.push("Contraseña: mínimo 8 caracteres.");
+      if (password.length < 6)         e.push("Contraseña: mínimo 6 caracteres.");
       if (password !== confirmPassword) e.push("Las contraseñas no coinciden.");
     }
+    
     setErrors(e);
     return e.length === 0;
   };
@@ -336,7 +337,7 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
 // ─── Modal: Crear Mascota ─────────────────────────────────────────────────────
 
 function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
-  const [form, setForm] = useState({ nombre: "", especie: "", raza: "", edad: "", historial_medico: "", owner_id: "" });
+  const [form, setForm] = useState({ nombre: "", especie: "", raza: "", fecha_nacimiento: "", historial_medico: "", owner_id: "" });
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -355,7 +356,7 @@ function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
     if (!validate()) return;
     setLoading(true);
     try {
-      const payload = { ...form, edad: form.edad ? Number(form.edad) : null, owner_id: Number(form.owner_id) };
+      const payload = { ...form, fecha_nacimiento: form.fecha_nacimiento || null, owner_id: Number(form.owner_id) };
       const res = await expressApi.post("/mascotas", payload);
       onCreated(res.data?.data || res.data);
       onClose();
@@ -382,8 +383,8 @@ function CreateMascotaModal({ onClose, propietarios = [], onCreated }) {
             <input className="input" value={form.raza} onChange={set("raza")} />
           </label>
           <label>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Edad (años)</div>
-            <input className="input" type="number" min="0" value={form.edad} onChange={set("edad")} />
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Fecha de nacimiento</div>
+            <input className="input" type="date" value={form.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
           </label>
           <label>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Propietario</div>
