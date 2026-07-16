@@ -45,6 +45,19 @@ function getToday() {
   return `${y}-${m}-${d}`;
 }
 
+// ─── Notificaciones: control de "leídas" en localStorage ─────────────────────
+const NOTIF_SEEN_KEY = "notifSeenKeys_v1";
+
+function getSeenKeys() {
+  try { return new Set(JSON.parse(localStorage.getItem(NOTIF_SEEN_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+
+function saveSeenKeys(set) {
+  // Se conservan las últimas 400 para que localStorage no crezca sin límite
+  localStorage.setItem(NOTIF_SEEN_KEY, JSON.stringify(Array.from(set).slice(-400)));
+}
+
 // ─── Componentes visuales base ────────────────────────────────────────────────
 
 function SectionTitle({ children }) {
@@ -162,6 +175,114 @@ function StatusBadge({ estado }) {
   );
 }
 
+// ─── Panel de notificaciones (dropdown bajo el header) ────────────────────────
+
+function NotificacionesPanel({ items, onClose }) {
+  const citas   = items.filter(i => i.tipo === "cita");
+  const vacunas = items.filter(i => i.tipo === "vacuna");
+
+  const fmtCita = (iso) => {
+    const d = new Date(iso);
+    const fecha = d.toLocaleDateString("es-CR", { weekday: "short", day: "numeric", month: "short" });
+    const hora  = d.toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" });
+    return `${fecha} · ${hora}`;
+  };
+
+  return (
+    <>
+      {/* Overlay transparente: clic fuera cierra el panel */}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 190 }} />
+      <div className="card" style={{
+        position: "fixed", top: 72, right: 24, zIndex: 200,
+        width: 400, maxWidth: "92vw", maxHeight: "72vh",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        border: "1px solid rgba(96,165,250,0.25)",
+        boxShadow: "0 18px 50px rgba(0,0,0,0.55)",
+      }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "13px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0,
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>🔔 Notificaciones</div>
+          <button className="btn-ghost" onClick={onClose} style={{ fontSize: 16, padding: "2px 8px" }}>✕</button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: 12 }}>
+          {items.length === 0 && (
+            <div style={{ textAlign: "center", padding: "34px 16px", color: "var(--subtext)" }}>
+              <div style={{ fontSize: 34, marginBottom: 8 }}>🎉</div>
+              <div style={{ fontSize: 13 }}>Todo al día. No hay citas en las próximas 24 h ni vacunas por vencer.</div>
+            </div>
+          )}
+
+          {citas.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", letterSpacing: "0.08em", textTransform: "uppercase", margin: "4px 4px 8px" }}>
+                📅 Citas en las próximas 24 horas
+              </div>
+              {citas.map(n => (
+                <div key={n.key} style={{
+                  display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, marginBottom: 8,
+                  background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.2)",
+                }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>📅</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{n.mascota_nombre || "Mascota"}</span>
+                      <StatusBadge estado={n.estado} />
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--subtext)", marginTop: 3 }}>
+                      👤 {n.propietario_nombre || "—"} · 🩺 {n.tipo_consulta || "Consulta"}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text)", marginTop: 2, fontWeight: 600 }}>
+                      🕐 {fmtCita(n.fecha_inicio)}
+                      {n.veterinario_nombre ? <span style={{ color: "var(--subtext)", fontWeight: 400 }}> · Dr. {n.veterinario_nombre}</span> : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {vacunas.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", letterSpacing: "0.08em", textTransform: "uppercase", margin: "10px 4px 8px" }}>
+                💉 Vacunas por vencer (30 días)
+              </div>
+              {vacunas.map(n => {
+                const vencida = n.estado === "vencida";
+                const dias = Math.abs(n.dias_restantes ?? 0);
+                return (
+                  <div key={n.key} style={{
+                    display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, marginBottom: 8,
+                    background: vencida ? "rgba(239,68,68,0.07)" : "rgba(245,158,11,0.07)",
+                    border: `1px solid ${vencida ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"}`,
+                  }}>
+                    <span style={{ fontSize: 20, flexShrink: 0 }}>💉</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>
+                        {n.mascota_nombre || "Mascota"} — {n.nombre_vacuna || "Vacuna"}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--subtext)", marginTop: 3 }}>
+                        👤 {n.propietario_nombre || "—"} · 📅 {n.fecha_proxima_display}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, color: vencida ? "#ef4444" : "#f59e0b" }}>
+                        {vencida
+                          ? `⚠️ Venció hace ${dias} día${dias !== 1 ? "s" : ""}`
+                          : (n.dias_restantes === 0 ? "⏰ Vence HOY" : `⏰ Vence en ${dias} día${dias !== 1 ? "s" : ""}`)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Modal: Crear / Editar Propietario (con cédula) ──────────────────────────
 
 function OwnerModal({ onClose, onSaved, initial = null }) {
@@ -193,17 +314,15 @@ function OwnerModal({ onClose, onSaved, initial = null }) {
       e.push("Teléfono requerido.");
     } else {
       if (/[^0-9+\-\s().]/.test(tel)) e.push("Teléfono: solo dígitos y + - ( ) . espacios.");
-      if ((tel.match(/\d/g) || []).length < 8) e.push("Teléfono: mínimo 8 dígitos.");
+      if ((tel.match(/\d/g) || []).length < 7) e.push("Teléfono: mínimo 7 dígitos.");
     }
     if (form.direccion.trim().length < 5)
       e.push("Dirección requerida (mínimo 5 caracteres).");
     if (!isEditing && cedula && cedula.length !== 9)
       e.push("Cédula debe tener exactamente 9 dígitos.");
     if (password) {
-      if (password.length < 6)         e.push("Contraseña: mínimo 6 caracteres.");
       if (password !== confirmPassword) e.push("Las contraseñas no coinciden.");
     }
-    
     setErrors(e);
     return e.length === 0;
   };
@@ -784,6 +903,11 @@ export default function DashboardPage() {
   const [propietariosList, setPropietariosList] = useState([]);
   const [modals, setModals]     = useState(INITIAL_MODALS);
 
+  // Notificaciones
+  const [notifItems, setNotifItems] = useState([]);
+  const [notifOpen, setNotifOpen]   = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const openModal  = (key) => setModals(m => ({ ...m, [key]: true }));
   const closeModal = (key) => setModals(m => ({ ...m, [key]: false }));
 
@@ -831,6 +955,39 @@ export default function DashboardPage() {
     })();
   }, [router]);
 
+  // Polling de notificaciones cada 60 s
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const fetchNotifs = async () => {
+      try {
+        const res = await expressApi.get("/notificaciones");
+        if (!alive) return;
+        const items = res.data?.data?.items || [];
+        setNotifItems(items);
+        const seen = getSeenKeys();
+        setUnreadCount(items.filter(i => !seen.has(i.key)).length);
+      } catch { /* silencioso: sin red o sin permisos no rompe el dashboard */ }
+    };
+    fetchNotifs();
+    const interval = setInterval(fetchNotifs, 60000);
+    return () => { alive = false; clearInterval(interval); };
+  }, [user]);
+
+  const toggleNotif = () => {
+    setNotifOpen(open => {
+      const next = !open;
+      if (next) {
+        // Al abrir el panel, todo lo visible queda marcado como leído
+        const seen = getSeenKeys();
+        notifItems.forEach(i => seen.add(i.key));
+        saveSeenKeys(seen);
+        setUnreadCount(0);
+      }
+      return next;
+    });
+  };
+
   const logout = () => {
     ["token", "user", "user_source"].forEach(k => localStorage.removeItem(k));
     router.replace("/");
@@ -851,6 +1008,7 @@ export default function DashboardPage() {
   const role      = ROLES[user.role] ?? ROLES.user;
   const firstName = user.nombre?.split(" ")[0] || user.cedula || user.email;
   const citasColor = totals.citasHoy > 0 ? "#34d399" : "var(--subtext)";
+  const isAdmin = user.role === "admin";
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -879,6 +1037,46 @@ export default function DashboardPage() {
             </div>
             <div style={{ fontSize: 12, color: role.color, fontWeight: 600 }}>{role.label}</div>
           </div>
+
+          {/* Notificaciones + Reportes, apilados para no saturar el header */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button
+              className="btn-ghost"
+              onClick={toggleNotif}
+              style={{
+                position: "relative", padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
+                border: notifOpen ? "1px solid rgba(96,165,250,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 8, textAlign: "left",
+              }}
+            >
+              🔔 Notificaciones
+              {unreadCount > 0 && (
+                <span style={{
+                  position: "absolute", top: -6, right: -6,
+                  minWidth: 17, height: 17, borderRadius: 9, padding: "0 4px",
+                  background: "#ef4444", color: "#fff",
+                  fontSize: 10, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "2px solid #0b1220",
+                }}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+            {isAdmin && (
+              <button
+                className="btn-ghost"
+                onClick={() => router.push("/reportes")}
+                style={{
+                  padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
+                  border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, textAlign: "left",
+                }}
+              >
+                📊 Reportes
+              </button>
+            )}
+          </div>
+
           <button
             className="btn-ghost"
             onClick={() => router.push("/profile")}
@@ -891,6 +1089,11 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {/* Panel de notificaciones */}
+      {notifOpen && (
+        <NotificacionesPanel items={notifItems} onClose={() => setNotifOpen(false)} />
+      )}
 
       {/* ── Contenido principal ── */}
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
