@@ -277,12 +277,122 @@ function VacunaForm({ petId, initial = null, onSaved, onCancel }) {
   );
 }
 
+// ─── Agrupación de dosis por serie de vacuna ──────────────────────────────────
+// Cada serie (1ª, 2ª, 3ª dosis...) comparte el mismo grupo_id que asigna el API.
+function agruparPorSerie(vacunas) {
+  const map = new Map();
+  for (const v of vacunas) {
+    const g = v.grupo_id ?? v.id;
+    if (!map.has(g)) map.set(g, []);
+    map.get(g).push(v);
+  }
+
+  const grupos = [];
+  for (const [grupoId, lista] of map) {
+    // Dosis más reciente primero
+    const dosis = lista.slice().sort((a, b) => {
+      const fa = a.fecha_aplicacion || "";
+      const fb = b.fecha_aplicacion || "";
+      if (fa !== fb) return fa < fb ? 1 : -1;
+      return b.id - a.id;
+    });
+    grupos.push({
+      grupoId,
+      nombre: dosis[0].nombre_vacuna,
+      dosis,
+      actual: dosis[0],   // la dosis vigente de la serie
+      total: dosis.length,
+    });
+  }
+
+  // Primero lo que requiere acción: vencidas → próximas → vigentes → completadas
+  const prioridad = { vencida: 0, proxima: 1, vigente: 2, sin_proxima: 3, completado: 4 };
+  grupos.sort((a, b) => {
+    const pa = prioridad[a.actual.estado] ?? 9;
+    const pb = prioridad[b.actual.estado] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return (b.actual.fecha_aplicacion || "").localeCompare(a.actual.fecha_aplicacion || "");
+  });
+  return grupos;
+}
+
+function DatoMini({ label, children }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 13 }}>{children}</div>
+    </div>
+  );
+}
+
+// Una dosis dentro de la serie
+function DosisItem({ v, numero, esActual, isAdmin, onEditar, onEliminar }) {
+  const completado = v.estado === "completado";
+  return (
+    <div style={{
+      display: "flex", gap: 10, padding: "10px 12px",
+      borderTop: "1px solid rgba(255,255,255,0.06)",
+      background: esActual ? "rgba(255,255,255,0.02)" : "transparent",
+      opacity: completado ? 0.7 : 1,
+    }}>
+      <div style={{
+        width: 24, height: 24, borderRadius: 12, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 11, fontWeight: 800,
+        background: completado ? "rgba(167,139,250,0.15)" : "rgba(96,165,250,0.15)",
+        border: `1px solid ${completado ? "rgba(167,139,250,0.35)" : "rgba(96,165,250,0.35)"}`,
+        color: completado ? "#a78bfa" : "var(--accent)",
+      }}>{numero}</div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>
+            {numero}ª dosis · {v.fecha_aplicacion_display}
+          </span>
+          <EstadoBadge estado={v.estado} dias={v.dias_restantes} />
+          {esActual && v.total_dosis > 1 && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-2)" }}>ACTUAL</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
+          <DatoMini label="Próxima dosis">{v.fecha_proxima_display}</DatoMini>
+          {v.veterinario_nombre && <DatoMini label="Aplicó">Dr. {v.veterinario_nombre}</DatoMini>}
+        </div>
+        {(v.producto || v.lote) && (
+          <div style={{ marginTop: 5, fontSize: 12, color: "var(--subtext)" }}>
+            {v.producto && <span>🏷️ {v.producto}</span>}
+            {v.producto && v.lote && <span> · </span>}
+            {v.lote && <span>Lote: {v.lote}</span>}
+          </div>
+        )}
+        {v.notas && (
+          <div style={{ marginTop: 5, fontSize: 12.5, lineHeight: 1.5, color: "var(--subtext)" }}>
+            {v.notas}
+          </div>
+        )}
+      </div>
+
+      {isAdmin && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+          <button className="btn" style={{ padding: "3px 9px", fontSize: 11 }} onClick={() => onEditar(v)}>
+            Editar
+          </button>
+          <button className="btn-danger" style={{ padding: "3px 9px", fontSize: 11 }} onClick={() => onEliminar(v.id)}>
+            Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VacunasModal({ pet, onClose, isAdmin = false }) {
   const [vacunas, setVacunas]             = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showForm, setShowForm]           = useState(false);
   const [editing, setEditing]             = useState(null);
   const [aplicarTarget, setAplicarTarget] = useState(null);
+  const [expandidos, setExpandidos]       = useState(() => new Set());
 
   const fetchVacunas = async () => {
     setLoading(true);
@@ -295,6 +405,16 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
   };
 
   useEffect(() => { fetchVacunas(); }, []);
+
+  const grupos = agruparPorSerie(vacunas);
+
+  const toggleGrupo = (grupoId) => {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(grupoId)) next.delete(grupoId); else next.add(grupoId);
+      return next;
+    });
+  };
 
   const handleSaved = (saved) => {
     setVacunas(prev => {
@@ -310,6 +430,9 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
       const updated = prev.map(v => v.id === registroAnterior.id ? registroAnterior : v);
       return [nuevoRegistro, ...updated];
     });
+    // Deja la serie abierta para que se vea la dosis recién agregada
+    const g = nuevoRegistro.grupo_id ?? nuevoRegistro.id;
+    setExpandidos(prev => new Set(prev).add(g));
     setAplicarTarget(null);
   };
 
@@ -323,9 +446,11 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
     }
   };
 
+  const editarDosis = (v) => { setEditing(v); setShowForm(false); setAplicarTarget(null); };
+
   return (
     <ModalBase title={`💉 Libro de vacunas — ${pet.nombre}`}
-      subtitle={`${vacunas.length} registro${vacunas.length !== 1 ? "s" : ""}`}
+      subtitle={`${grupos.length} vacuna${grupos.length !== 1 ? "s" : ""} · ${vacunas.length} dosis registrada${vacunas.length !== 1 ? "s" : ""}`}
       onClose={onClose}>
       {isAdmin && !showForm && !editing && (
         <button className="btn" onClick={() => setShowForm(true)} style={{ marginBottom: 12 }}>
@@ -337,7 +462,7 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
 
       {loading ? (
         <div style={{ padding: "20px 0", textAlign: "center", color: "var(--subtext)" }}>Cargando vacunas...</div>
-      ) : vacunas.length === 0 ? (
+      ) : grupos.length === 0 ? (
         <div style={{ padding: "32px 24px", textAlign: "center", borderRadius: 10,
           border: "1px dashed rgba(255,255,255,0.1)", color: "var(--subtext)" }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>💉</div>
@@ -345,75 +470,84 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {vacunas.map(v => (
-            <div key={v.id} style={{
-              padding: "12px 14px", borderRadius: 10,
-              border: v.estado === "completado" ? "1px solid rgba(167,139,250,0.2)" : "1px solid rgba(255,255,255,0.08)",
-              background: v.estado === "completado" ? "rgba(167,139,250,0.04)" : "rgba(255,255,255,0.03)",
-              opacity: v.estado === "completado" ? 0.75 : 1,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 800, fontSize: 15 }}>💉 {v.nombre_vacuna}</span>
-                    <EstadoBadge estado={v.estado} dias={v.dias_restantes} />
-                  </div>
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", textTransform: "uppercase" }}>Aplicada</div>
-                      <div style={{ fontSize: 13 }}>{v.fecha_aplicacion_display}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", textTransform: "uppercase" }}>Próxima dosis</div>
-                      <div style={{ fontSize: 13 }}>{v.fecha_proxima_display}</div>
-                    </div>
-                    {v.veterinario_nombre && (
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--subtext)", textTransform: "uppercase" }}>Aplicó</div>
-                        <div style={{ fontSize: 13 }}>Dr. {v.veterinario_nombre}</div>
+          {grupos.map(g => {
+            const actual = g.actual;
+            const completado = actual.estado === "completado";
+            const abierto = expandidos.has(g.grupoId);
+            const puedeAplicar = actual.estado === "vencida" || actual.estado === "proxima";
+
+            return (
+              <div key={g.grupoId} style={{
+                borderRadius: 10, overflow: "hidden",
+                border: completado ? "1px solid rgba(167,139,250,0.2)" : "1px solid rgba(255,255,255,0.08)",
+                background: completado ? "rgba(167,139,250,0.04)" : "rgba(255,255,255,0.03)",
+              }}>
+                {/* ── Encabezado de la serie ── */}
+                <div style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 800, fontSize: 15 }}>💉 {g.nombre}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+                          background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)",
+                          color: "var(--accent)", whiteSpace: "nowrap",
+                        }}>
+                          {g.total} dosis
+                        </span>
+                        <EstadoBadge estado={actual.estado} dias={actual.dias_restantes} />
                       </div>
-                    )}
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
+                        <DatoMini label="Última aplicación">{actual.fecha_aplicacion_display}</DatoMini>
+                        <DatoMini label="Próxima dosis">{actual.fecha_proxima_display}</DatoMini>
+                        {actual.veterinario_nombre && <DatoMini label="Aplicó">Dr. {actual.veterinario_nombre}</DatoMini>}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                      {isAdmin && puedeAplicar && aplicarTarget !== actual.id && (
+                        <button className="btn" style={{
+                          padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap",
+                          background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.35)", color: "#34d399",
+                        }}
+                          onClick={() => { setAplicarTarget(actual.id); setEditing(null); setShowForm(false); }}>
+                          ✅ Aplicar dosis
+                        </button>
+                      )}
+                      <button className="btn-ghost" style={{
+                        padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap",
+                        border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8,
+                      }}
+                        onClick={() => toggleGrupo(g.grupoId)}>
+                        {abierto ? "▲ Ocultar" : `▼ Ver ${g.total > 1 ? "historial" : "detalle"}`}
+                      </button>
+                    </div>
                   </div>
-                  {(v.producto || v.lote) && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: "var(--subtext)" }}>
-                      {v.producto && <span>🏷️ {v.producto}</span>}
-                      {v.producto && v.lote && <span> · </span>}
-                      {v.lote && <span>Lote: {v.lote}</span>}
-                    </div>
-                  )}
-                  {v.notas && (
-                    <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5, color: "var(--subtext)" }}>
-                      {v.notas}
-                    </div>
-                  )}
-                  {aplicarTarget === v.id && (
-                    <AplicarForm vacuna={v} onSaved={handleAplicar} onCancel={() => setAplicarTarget(null)} />
+
+                  {aplicarTarget === actual.id && (
+                    <AplicarForm vacuna={actual} onSaved={handleAplicar} onCancel={() => setAplicarTarget(null)} />
                   )}
                 </div>
-                {isAdmin && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
-                    {(v.estado === "vencida" || v.estado === "proxima") && aplicarTarget !== v.id && (
-                      <button className="btn" style={{
-                        padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap",
-                        background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.35)", color: "#34d399",
-                      }}
-                        onClick={() => { setAplicarTarget(v.id); setEditing(null); setShowForm(false); }}>
-                        ✅ Aplicar dosis
-                      </button>
-                    )}
-                    <button className="btn" style={{ padding: "4px 10px", fontSize: 12 }}
-                      onClick={() => { setEditing(v); setShowForm(false); setAplicarTarget(null); }}>
-                      Editar
-                    </button>
-                    <button className="btn-danger" style={{ padding: "4px 10px", fontSize: 12 }}
-                      onClick={() => deleteVacuna(v.id)}>
-                      Eliminar
-                    </button>
+
+                {/* ── Historial de dosis de la serie ── */}
+                {abierto && (
+                  <div style={{ background: "rgba(0,0,0,0.15)" }}>
+                    {g.dosis.map((v, idx) => (
+                      <DosisItem
+                        key={v.id}
+                        v={v}
+                        numero={g.total - idx}
+                        esActual={idx === 0}
+                        isAdmin={isAdmin}
+                        onEditar={editarDosis}
+                        onEliminar={deleteVacuna}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </ModalBase>

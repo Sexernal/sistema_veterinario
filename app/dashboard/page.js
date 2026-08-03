@@ -1038,7 +1038,8 @@ export default function DashboardPage() {
             <div style={{ fontSize: 12, color: role.color, fontWeight: 600 }}>{role.label}</div>
           </div>
 
-          {/* Notificaciones + Reportes, apilados para no saturar el header */}
+          {/* Notificaciones arriba; Reportes + Consolidado en una fila debajo.
+              Se mantienen 2 filas para no crecer la altura del header. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <button
               className="btn-ghost"
@@ -1064,16 +1065,31 @@ export default function DashboardPage() {
               )}
             </button>
             {isAdmin && (
-              <button
-                className="btn-ghost"
-                onClick={() => router.push("/reportes")}
-                style={{
-                  padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
-                  border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, textAlign: "left",
-                }}
-              >
-                📊 Reportes
-              </button>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => router.push("/reportes")}
+                  style={{
+                    flex: 1, padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
+                    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  📊 Reportes
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => router.push("/consolidado")}
+                  title="Consolidado diario de trabajos (informe para el Colegio de Veterinarios)"
+                  style={{
+                    flex: 1, padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
+                    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  📄 Consolidado
+                </button>
+              </div>
             )}
           </div>
 
