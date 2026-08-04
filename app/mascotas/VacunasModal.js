@@ -2,6 +2,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import expressApi from "../../lib/expressApi";
+import { ModalBase, ErrorList, EmptyState } from "./ui";
 
 const VACUNAS_COMUNES = [
   "Rabia", "Parvovirus", "Moquillo", "Hepatitis", "Leptospirosis",
@@ -15,43 +16,6 @@ function addOneYear(ymd) {
   return `${y + 1}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function ModalBase({ title, subtitle, onClose, children, maxWidth = 720 }) {
-  return (
-    <div className="modal-overlay">
-      <div className="modal card" style={{
-        maxWidth, width: "92vw", maxHeight: "88vh",
-        display: "flex", flexDirection: "column", overflow: "hidden",
-      }}>
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0,
-        }}>
-          <div>
-            <div className="title" style={{ fontSize: 18 }}>{title}</div>
-            {subtitle && <div className="subtitle" style={{ fontSize: 13 }}>{subtitle}</div>}
-          </div>
-          <button className="btn-ghost" onClick={onClose} style={{ fontSize: 18 }}>✕</button>
-        </div>
-        <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ErrorList({ errors }) {
-  if (!errors.length) return null;
-  return (
-    <div style={{
-      marginTop: 12, padding: "10px 14px", borderRadius: 8,
-      background: "rgba(251,113,133,0.08)", border: "1px solid rgba(251,113,133,0.2)",
-      color: "#fb7185", fontSize: 13,
-    }}>
-      <ul style={{ margin: 0, paddingLeft: 18 }}>
-        {errors.map((e, i) => <li key={i}>{e}</li>)}
-      </ul>
-    </div>
-  );
-}
 
 function EstadoBadge({ estado, dias }) {
   const map = {
@@ -451,7 +415,7 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
   return (
     <ModalBase title={`💉 Libro de vacunas — ${pet.nombre}`}
       subtitle={`${grupos.length} vacuna${grupos.length !== 1 ? "s" : ""} · ${vacunas.length} dosis registrada${vacunas.length !== 1 ? "s" : ""}`}
-      onClose={onClose}>
+      onClose={onClose} maxWidth={720}>
       {isAdmin && !showForm && !editing && (
         <button className="btn" onClick={() => setShowForm(true)} style={{ marginBottom: 12 }}>
           + Nueva vacuna
@@ -463,11 +427,7 @@ export default function VacunasModal({ pet, onClose, isAdmin = false }) {
       {loading ? (
         <div style={{ padding: "20px 0", textAlign: "center", color: "var(--subtext)" }}>Cargando vacunas...</div>
       ) : grupos.length === 0 ? (
-        <div style={{ padding: "32px 24px", textAlign: "center", borderRadius: 10,
-          border: "1px dashed rgba(255,255,255,0.1)", color: "var(--subtext)" }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>💉</div>
-          <div>No hay vacunas registradas aún.</div>
-        </div>
+        <EmptyState icon="💉">No hay vacunas registradas aún.</EmptyState>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {grupos.map(g => {
