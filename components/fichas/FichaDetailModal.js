@@ -3,7 +3,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import expressApi from "../../lib/expressApi";
-import { ModalBase } from "./ui";
+import { ModalBase } from "../ui";
 import { tipoDisplay } from "./fichasUtils";
 
 // ─── Detalle de una ficha ─────────────────────────────────────────────────────

@@ -4,9 +4,10 @@
 "use client";
 import { useState } from "react";
 import expressApi from "../../lib/expressApi";
-import { ErrorList } from "./ui";
+import { ErrorList } from "../ui";
 import ComandaSection from "./ComandaSection";
 import { TIPO_OPCIONES, tipoDisplay, camposDeSeguimiento } from "./fichasUtils";
+import { hoyLocal, aFechaInput } from "../fechas";
 
 // ─── Selector "es seguimiento de…" ────────────────────────────────────────────
 // Codifica la opción como "t:<id>" (tratamiento existente) o "f:<id>"
@@ -63,13 +64,10 @@ function SeguimientoSelect({ value, onChange, tratamientos, fichas, excluirFicha
 // ─── Formulario de ficha ──────────────────────────────────────────────────────
 function FichaForm({ petId, initial = null, onSaved, onCancel, tratamientos = [], fichas = [] }) {
   const isEditing = !!initial?.id;
-  const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
     tipo:               initial?.tipo               || "consulta",
     tipo_personalizado: initial?.tipo_personalizado || "",
-    // El API manda la fecha como "2026-03-12T09:00:00.000Z" o "2026-03-12 09:00:00".
-    // <input type="date"> solo acepta YYYY-MM-DD; cualquier otra cosa lo deja en blanco.
-    fecha:              String(initial?.fecha || "").slice(0, 10) || today,
+    fecha:              aFechaInput(initial?.fecha) || hoyLocal(),
     peso:               initial?.peso               ?? "",
     temperatura:        initial?.temperatura        ?? "",
     nota:               initial?.nota               || "",

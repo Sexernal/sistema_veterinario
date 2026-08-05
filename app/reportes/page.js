@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { hoyLocal } from "../../components/fechas";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const CRC = (n) =>
@@ -179,7 +180,7 @@ export default function ReportesPage() {
 
   const t = data.totales;
   const estadoMap = Object.fromEntries(data.citas_por_estado_mes.map(r => [r.estado, r.n]));
-  const mesActualLabel = mesLabel(new Date().toISOString().slice(0, 7));
+  const mesActualLabel = mesLabel(hoyLocal().slice(0, 7));
 
   return (
     <div style={{ minHeight: "100vh" }}>

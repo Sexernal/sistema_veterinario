@@ -213,6 +213,24 @@ select.input option {
   color: #e6eef8;
 }
 
+/* Encabezados de grupo dentro del desplegable (<optgroup label="...">).
+   Sin esto heredan el color claro del select pero conservan el fondo blanco
+   del sistema, y el título del grupo queda blanco sobre blanco: ilegible.
+   El navegador solo respeta estos dos si van declarados en el optgroup. */
+select.input optgroup {
+  background: #0b1220;
+  color: #9fb0c8;
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* Las opciones dentro de un grupo vuelven al color normal de texto */
+select.input optgroup option {
+  background: #0b1220;
+  color: #e6eef8;
+  font-weight: 400;
+}
+
 /* Forzar placeholders y small text */
 .input::placeholder { color: rgba(174,190,216,0.12) !important; }
 small { color: #9fb0c8 !important; }

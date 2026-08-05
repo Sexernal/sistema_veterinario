@@ -1,20 +1,15 @@
 // app/mascotas/VacunasModal.js
 "use client";
 import { useEffect, useState } from "react";
-import expressApi from "../../lib/expressApi";
+import expressApi from "../lib/expressApi";
 import { ModalBase, ErrorList, EmptyState } from "./ui";
+import { hoyLocal, aFechaInput, sumarAnios } from "./fechas";
 
 const VACUNAS_COMUNES = [
   "Rabia", "Parvovirus", "Moquillo", "Hepatitis", "Leptospirosis",
   "Bordetella", "Polivalente (Quíntuple)", "Séxtuple",
   "Triple felina", "Leucemia felina", "Otra",
 ];
-
-function addOneYear(ymd) {
-  if (!ymd) return "";
-  const [y, m, d] = ymd.split("-").map(Number);
-  return `${y + 1}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
 
 
 function EstadoBadge({ estado, dias }) {
@@ -38,9 +33,8 @@ function EstadoBadge({ estado, dias }) {
 }
 
 function AplicarForm({ vacuna, onSaved, onCancel }) {
-  const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
-    fecha_aplicacion: today,
+    fecha_aplicacion: hoyLocal(),
     fecha_proxima:    "",
     producto:         vacuna.producto || "",
     lote:             "",
@@ -94,7 +88,7 @@ function AplicarForm({ vacuna, onSaved, onCancel }) {
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
             <span>Próxima dosis (opcional)</span>
             <button type="button"
-              onClick={() => setForm(f => ({ ...f, fecha_proxima: addOneYear(f.fecha_aplicacion) }))}
+              onClick={() => setForm(f => ({ ...f, fecha_proxima: sumarAnios(f.fecha_aplicacion) }))}
               style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: 11, padding: 0 }}>
               +1 año
             </button>
@@ -132,14 +126,13 @@ function AplicarForm({ vacuna, onSaved, onCancel }) {
 
 function VacunaForm({ petId, initial = null, onSaved, onCancel }) {
   const isEditing = !!initial?.id;
-  const today = new Date().toISOString().split("T")[0];
   const initialNombre = initial?.nombre_vacuna || "";
   const esComun = VACUNAS_COMUNES.includes(initialNombre);
   const [selVacuna, setSelVacuna]   = useState(initialNombre ? (esComun ? initialNombre : "Otra") : "Rabia");
   const [otraVacuna, setOtraVacuna] = useState(esComun ? "" : initialNombre);
   const [form, setForm] = useState({
-    fecha_aplicacion: initial?.fecha_aplicacion || today,
-    fecha_proxima:    initial?.fecha_proxima    || "",
+    fecha_aplicacion: aFechaInput(initial?.fecha_aplicacion) || hoyLocal(),
+    fecha_proxima:    aFechaInput(initial?.fecha_proxima),
     producto:         initial?.producto         || "",
     lote:             initial?.lote             || "",
     notas:            initial?.notas            || "",
@@ -207,7 +200,7 @@ function VacunaForm({ petId, initial = null, onSaved, onCancel }) {
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
             <span>Próxima dosis (opcional)</span>
-            <button type="button" onClick={() => setForm(f => ({ ...f, fecha_proxima: addOneYear(f.fecha_aplicacion) }))}
+            <button type="button" onClick={() => setForm(f => ({ ...f, fecha_proxima: sumarAnios(f.fecha_aplicacion) }))}
               style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: 11, padding: 0 }}>
               +1 año
             </button>

@@ -3,7 +3,7 @@
 "use client";
 import { useState } from "react";
 import expressApi from "../../lib/expressApi";
-import { ErrorList } from "./ui";
+import { ErrorList } from "../ui";
 import FichaRow from "./FichaRow";
 import { getEstadoTratamiento, duracionTexto } from "./fichasUtils";
 

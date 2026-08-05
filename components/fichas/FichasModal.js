@@ -4,7 +4,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import expressApi from "../../lib/expressApi";
-import { ModalBase, EmptyState, FilterChips, getSpeciesIcon } from "./ui";
+import { ModalBase, EmptyState, FilterChips, getSpeciesIcon } from "../ui";
 import FichaForm from "./FichaForm";
 import FichaDetailModal from "./FichaDetailModal";
 import FichaRow from "./FichaRow";

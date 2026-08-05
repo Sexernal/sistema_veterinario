@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import expressApi from "../../lib/expressApi";
+import { hoyLocal } from "../../components/fechas";
 import { useRouter } from "next/navigation";
 
 const STATUS_CONFIG = {
@@ -173,7 +174,7 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
   const [errors, setErrors] = useState([]);
   const [slotsByVet, setSlotsByVet] = useState({});
   const [isGeneratingSlots, setIsGeneratingSlots] = useState(false);
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = hoyLocal();
 
   useEffect(() => {
     if (propietarios.length && !propietarioId) setPropietarioId(propietarios[0].id);
@@ -472,7 +473,7 @@ function EditCitaModal({ cita, veterinarios = [], onClose, onUpdated }) {
   const [isLoadingSlots, setIsLoading] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [errors, setErrors]         = useState([]);
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = hoyLocal();
 
   useEffect(() => {
     if (!cita.fecha_inicio) return;

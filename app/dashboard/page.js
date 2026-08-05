@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { hoyLocal } from "../../components/fechas";
 
 // ─── Constantes de roles ──────────────────────────────────────────────────────
 const ROLES = {
@@ -549,7 +550,7 @@ function CreateCitaModal({ propietarios = [], onClose, onCreated }) {
   const [slotsByVet, setSlotsByVet] = useState({});
   const [isGeneratingSlots, setIsGeneratingSlots] = useState(false);
 
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = hoyLocal();
 
   useEffect(() => {
     if (propietarios.length && !propietarioId) setPropietarioId(propietarios[0].id);

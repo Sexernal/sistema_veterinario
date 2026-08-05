@@ -3,15 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
-import VacunasModal from "./VacunasModal";
-import FichasModal from "./FichasModal";
-import { ModalBase, ErrorList, getSpeciesIcon } from "./ui";
-
-function toDateInput(val) {
-  if (!val) return "";
-  if (typeof val === "string") return val.slice(0, 10);
-  try { return new Date(val).toISOString().slice(0, 10); } catch { return ""; }
-}
+import VacunasModal from "../../components/VacunasModal";
+import FichasModal from "../../components/fichas/FichasModal";
+import { ModalBase, ErrorList, getSpeciesIcon } from "../../components/ui";
+import { aFechaInput as toDateInput } from "../../components/fechas";
 
 function calcEdad(fechaNacimiento) {
   if (!fechaNacimiento) return null;
