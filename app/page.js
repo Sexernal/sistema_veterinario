@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../lib/expressApi";
+import OlvidePasswordModal from "../components/auth/OlvidePasswordModal";
 
 /* ── Estilos de inputs reutilizables ── */
 const inputStyle = { display: "block", width: "100%", boxSizing: "border-box" };
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [showPass,    setShowPass]    = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
+  const [showOlvide,  setShowOlvide]  = useState(false);
 
   // ── Modal crear personal ──
   const [step,           setStep]           = useState(null);   // null | "master" | "form"
@@ -202,6 +204,17 @@ export default function LoginPage() {
               }}
             >
               {loading ? "Ingresando..." : "Ingresar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowOlvide(true)}
+              style={{
+                display: "block", margin: "14px auto 0", background: "none", border: "none",
+                color: "#60a5fa", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 4,
+              }}
+            >
+              ¿Olvidaste tu contraseña?
             </button>
           </form>
 
@@ -397,6 +410,13 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showOlvide && (
+        <OlvidePasswordModal
+          onClose={() => setShowOlvide(false)}
+          cedulaInicial={cedula}
+        />
       )}
     </div>
   );

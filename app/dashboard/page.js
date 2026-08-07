@@ -6,7 +6,7 @@ import { hoyLocal } from "../../components/fechas";
 
 // ─── Constantes de roles ──────────────────────────────────────────────────────
 const ROLES = {
-  admin: { label: "Administrador", color: "var(--accent-2)" },
+  admin: { label: "Doctor(a)", color: "var(--accent-2)" },
   user:  { label: "Recepcionista", color: "var(--accent)" },
 };
 
