@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 import { hoyLocal } from "../../components/fechas";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ export default function ReportesPage() {
     if (!raw) return router.replace("/");
     try {
       const u = JSON.parse(raw);
-      if (u?.role !== "admin") return router.replace("/dashboard");
+      if (!puede(u, "reportes.ver")) return router.replace("/dashboard");
       setUser(u);
     } catch { router.replace("/"); }
   }, [router]);

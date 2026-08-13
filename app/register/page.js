@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function RegisterPage() {
     if (!raw) return router.replace("/"); // no logeado -> ir al login ("/")
     try {
       const user = JSON.parse(raw);
-      if (user.role !== "admin") {
+      if (!puede(user, "usuarios.gestionar")) {
         alert("Acceso denegado: sólo administradores pueden acceder.");
         router.replace("/dashboard");
       }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 import VacunasModal from "../../components/VacunasModal";
 import FichasModal from "../../components/fichas/FichasModal";
 import { ModalBase, ErrorList, getSpeciesIcon } from "../../components/ui";
@@ -133,7 +134,12 @@ export default function MascotasPage() {
   useEffect(() => {
     const raw = localStorage.getItem("user");
     if (!raw) return router.replace("/");
-    try { setUser(JSON.parse(raw)); } catch { router.replace("/"); }
+    try {
+      const u = JSON.parse(raw);
+      // Guarda de página: sin este permiso no se entra ni escribiendo la URL
+      if (!puede(u, "mascotas.gestionar")) return router.replace("/dashboard");
+      setUser(u);
+    } catch { router.replace("/"); }
   }, [router]);
 
   useEffect(() => { fetchAll(); }, []);
@@ -171,7 +177,7 @@ export default function MascotasPage() {
     });
   }, [pets, filter, speciesFilter]);
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = puede(user, "mascotas.gestionar");
 
   const openCreate = ()    => setModal({ open:true, pet:null });
   const openEdit   = (pet) => setModal({ open:true, pet });

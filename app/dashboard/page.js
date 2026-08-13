@@ -3,12 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
 import { hoyLocal } from "../../components/fechas";
-
-// ─── Constantes de roles ──────────────────────────────────────────────────────
-const ROLES = {
-  admin: { label: "Doctor(a)", color: "var(--accent-2)" },
-  user:  { label: "Recepcionista", color: "var(--accent)" },
-};
+import { puede, etiquetaRol, colorRol } from "../../components/permisos";
 
 // ─── Constantes para citas ────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -1006,10 +1001,10 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const role      = ROLES[user.role] ?? ROLES.user;
+  const role      = { label: etiquetaRol(user), color: colorRol(user) };
   const firstName = user.nombre?.split(" ")[0] || user.cedula || user.email;
   const citasColor = totals.citasHoy > 0 ? "#34d399" : "var(--subtext)";
-  const isAdmin = user.role === "admin";
+
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -1065,8 +1060,9 @@ export default function DashboardPage() {
                 </span>
               )}
             </button>
-            {isAdmin && (
+            {(puede(user, "reportes.ver") || puede(user, "consolidado.ver")) && (
               <div style={{ display: "flex", gap: 4 }}>
+                {puede(user, "reportes.ver") && (
                 <button
                   className="btn-ghost"
                   onClick={() => router.push("/reportes")}
@@ -1078,6 +1074,8 @@ export default function DashboardPage() {
                 >
                   📊 Reportes
                 </button>
+                )}
+                {puede(user, "consolidado.ver") && (
                 <button
                   className="btn-ghost"
                   onClick={() => router.push("/consolidado")}
@@ -1090,6 +1088,7 @@ export default function DashboardPage() {
                 >
                   📄 Consolidado
                 </button>
+                )}
               </div>
             )}
           </div>
@@ -1117,17 +1116,23 @@ export default function DashboardPage() {
         <div style={{ marginBottom: 32 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Bienvenido, {firstName}</h1>
           <p style={{ margin: "6px 0 0", color: "var(--subtext)", fontSize: 14 }}>
-            {user.role === "admin"
+            {puede(user, "usuarios.gestionar")
               ? "Tienes acceso completo al sistema."
-              : "Puedes gestionar propietarios, mascotas y citas."}
+              : puede(user, "fichas.gestionar")
+                ? "Puedes atender pacientes, gestionar fichas y ver el consolidado."
+                : "Puedes agendar citas y gestionar la facturación."}
           </p>
         </div>
 
         {/* Estadísticas */}
         <SectionTitle>Resumen general</SectionTitle>
         <div style={{ display: "flex", gap: 14, marginBottom: 32, flexWrap: "wrap" }}>
-          <StatCard icon="👤" value={totals.propietarios} label="Propietarios registrados" loading={loadingMetrics} />
-          <StatCard icon="🐾" value={totals.mascotas}     label="Mascotas registradas"     loading={loadingMetrics} />
+          {puede(user, "propietarios.gestionar") && (
+            <StatCard icon="👤" value={totals.propietarios} label="Propietarios registrados" loading={loadingMetrics} />
+          )}
+          {puede(user, "mascotas.gestionar") && (
+            <StatCard icon="🐾" value={totals.mascotas}     label="Mascotas registradas"     loading={loadingMetrics} />
+          )}
           <StatCard
             icon="📅"
             value={totals.citasHoy}
@@ -1140,35 +1145,49 @@ export default function DashboardPage() {
         {/* Navegación */}
         <SectionTitle>Secciones</SectionTitle>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 32 }}>
-          <NavCard icon="👤" title="Propietarios" subtitle="Ver y gestionar todos los dueños de mascotas" onClick={() => router.push("/propietarios")} />
-          <NavCard icon="🐾" title="Mascotas"     subtitle="Ver y gestionar todos los pacientes"           onClick={() => router.push("/mascotas")} />
-          <NavCard icon="📅" title="Citas"        subtitle="Ver y gestionar todas las citas"               onClick={() => router.push("/citas")} />
-          <NavCard icon="🧾" title="Facturación" subtitle="Comandas y cobros de consultas" onClick={() => router.push("/facturacion")} />
+          {puede(user, "propietarios.gestionar") && (
+            <NavCard icon="👤" title="Propietarios" subtitle="Ver y gestionar todos los dueños de mascotas" onClick={() => router.push("/propietarios")} />
+          )}
+          {puede(user, "mascotas.gestionar") && (
+            <NavCard icon="🐾" title="Mascotas"     subtitle="Ver y gestionar todos los pacientes"           onClick={() => router.push("/mascotas")} />
+          )}
+          {puede(user, "citas.gestionar") && (
+            <NavCard icon="📅" title="Citas"        subtitle="Ver y gestionar todas las citas"               onClick={() => router.push("/citas")} />
+          )}
+          {puede(user, "facturacion.ver") && (
+            <NavCard icon="🧾" title="Facturación" subtitle="Comandas y cobros de consultas" onClick={() => router.push("/facturacion")} />
+          )}
         </div>
 
         {/* Acciones rápidas */}
         <SectionTitle>Acciones rápidas</SectionTitle>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-          <ActionCard
-            icon="➕"
-            title="Crear propietario"
-            subtitle="Registrar nuevo dueño de mascota"
-            onClick={() => openModal("prop")}
-          />
-          <ActionCard
-            icon="🐶"
-            title="Crear mascota"
-            subtitle="Registrar nuevo paciente"
-            onClick={() => openModal("mascota")}
-            rgb="52,211,153"
-          />
-          <ActionCard
-            icon="📅"
-            title="Crear cita"
-            subtitle="Agendar nueva consulta"
-            onClick={() => openModal("cita")}
-            rgb="167,139,250"
-          />
+          {puede(user, "propietarios.gestionar") && (
+            <ActionCard
+              icon="➕"
+              title="Crear propietario"
+              subtitle="Registrar nuevo dueño de mascota"
+              onClick={() => openModal("prop")}
+            />
+          )}
+          {puede(user, "mascotas.gestionar") && (
+            <ActionCard
+              icon="🐶"
+              title="Crear mascota"
+              subtitle="Registrar nuevo paciente"
+              onClick={() => openModal("mascota")}
+              rgb="52,211,153"
+            />
+          )}
+          {puede(user, "citas.gestionar") && (
+            <ActionCard
+              icon="📅"
+              title="Crear cita"
+              subtitle="Agendar nueva consulta"
+              onClick={() => openModal("cita")}
+              rgb="167,139,250"
+            />
+          )}
         </div>
       </main>
 

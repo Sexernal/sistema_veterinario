@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 import VacunasModal from "../../components/VacunasModal";
 import FichasModal from "../../components/fichas/FichasModal";
 import { ModalBase, ErrorList, getSpeciesIcon } from "../../components/ui";
@@ -238,8 +239,13 @@ export default function PropietariosPage() {
   useEffect(() => {
     const raw = localStorage.getItem("user");
     if (!raw) return router.replace("/");
-    setUser(JSON.parse(raw));
-    fetchAll();
+    try {
+      const u = JSON.parse(raw);
+      // Guarda de página: sin este permiso no se entra ni escribiendo la URL
+      if (!puede(u, "propietarios.gestionar")) return router.replace("/dashboard");
+      setUser(u);
+      fetchAll();
+    } catch { router.replace("/"); }
   }, [router]);
 
   const fetchAll = async () => {
@@ -279,7 +285,7 @@ export default function PropietariosPage() {
 
   const selectedOwner = owners.find(o=>o.id===selectedOwnerId) ?? null;
   const selectedPets  = pets.filter(p=>(p.owner_id||p.propietario_id)==selectedOwnerId);
-  const isAdmin       = user?.role === "admin";
+  const isAdmin       = puede(user, "propietarios.gestionar");
 
   const handleOwnerSaved = (saved) => {
     setOwners(prev=>{ const e=prev.find(o=>o.id===saved.id); return e?prev.map(o=>o.id===saved.id?saved:o):[saved,...prev]; });

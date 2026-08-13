@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 import { hoyLocal } from "../../components/fechas";
 import { useRouter } from "next/navigation";
 
@@ -754,7 +755,7 @@ export default function CitasPage() {
     if (!raw) return router.replace("/");
     try {
       const u = JSON.parse(raw);
-      if (u.role !== "admin" && u.role !== "user") { alert("Acceso denegado."); router.replace("/dashboard"); }
+      if (!puede(u, "citas.gestionar")) return router.replace("/dashboard");
     } catch { router.replace("/"); }
   }, [router]);
 

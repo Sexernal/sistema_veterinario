@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
+import { puede } from "../../components/permisos";
 
 const CRC = (n) =>
   `₡${Number(n || 0).toLocaleString("es-CR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -240,7 +241,7 @@ export default function FacturacionPage() {
   };
 
   if (!user) return null;
-  const isAdmin        = user.role === "admin";
+
   const totalPendiente = rows.filter(r => !r.cobrado).reduce((s, r) => s + Number(r.total_comanda || 0), 0);
   const totalCobrado   = rows.filter(r =>  r.cobrado).reduce((s, r) => s + Number(r.total_comanda || 0), 0);
 
@@ -263,7 +264,7 @@ export default function FacturacionPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {isAdmin && (
+          {puede(user, "servicios.gestionar") && (
             <button className="btn-ghost" onClick={() => setShowCatalogo(true)} style={{ fontSize: 13, padding: "6px 12px" }}>
               ⚙️ Catálogo
             </button>
