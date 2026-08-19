@@ -1060,7 +1060,7 @@ export default function DashboardPage() {
                 </span>
               )}
             </button>
-            {(puede(user, "reportes.ver") || puede(user, "consolidado.ver")) && (
+            {(puede(user, "reportes.ver") || puede(user, "consolidado.ver") || puede(user, "usuarios.gestionar")) && (
               <div style={{ display: "flex", gap: 4 }}>
                 {puede(user, "reportes.ver") && (
                 <button
@@ -1087,6 +1087,20 @@ export default function DashboardPage() {
                   }}
                 >
                   📄 Consolidado
+                </button>
+                )}
+                {puede(user, "usuarios.gestionar") && (
+                <button
+                  className="btn-ghost"
+                  onClick={() => router.push("/personal")}
+                  title="Gestionar doctores y recepcionistas, y sus roles"
+                  style={{
+                    flex: 1, padding: "3px 10px", fontSize: 11.5, fontWeight: 600,
+                    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  👥 Personal
                 </button>
                 )}
               </div>
