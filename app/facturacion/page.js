@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
 import { puede } from "../../components/permisos";
+import { descargarArchivo } from "../../components/descargar";
 
 const CRC = (n) =>
   `₡${Number(n || 0).toLocaleString("es-CR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -65,6 +66,33 @@ function printComanda(row) {
   w.focus();
   setTimeout(() => w.print(), 500);
 }
+
+
+// ─── Estilos de impresión de la lista ─────────────────────────────────────────
+// Para el botón "Imprimir" del encabezado: oculta controles y pasa a blanco.
+// El botón "Descargar PDF" no depende de esto; genera el archivo en el servidor.
+const PRINT_CSS = `
+@media print {
+  @page { size: A4; margin: 14mm 12mm; }
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .no-print { display: none !important; }
+  .f-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    color: #000 !important;
+  }
+  .f-text  { color: #000 !important; }
+  .f-muted { color: #444 !important; }
+}
+`;
 
 // ─── Modal gestión de catálogo de servicios (admin) ──────────────────────────
 function CatalogoModal({ onClose }) {
@@ -201,6 +229,7 @@ export default function FacturacionPage() {
   const [marking, setMarking]   = useState(null);
   const [meta, setMeta]         = useState({ total: 0 });
   const [showCatalogo, setShowCatalogo] = useState(false);
+  const [bajando, setBajando] = useState(null);   // "lista" | id de la comanda | null
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -225,6 +254,32 @@ export default function FacturacionPage() {
     } finally { setLoading(false); }
   }, [filter]);
 
+  // Los PDF se generan en el SERVIDOR, no con window.print()/window.open().
+  // El diálogo del navegador no muestra vista previa en todos los entornos;
+  // un archivo real se abre en un visor donde sí se ven las páginas.
+  const descargarLista = async () => {
+    setBajando("lista");
+    try {
+      const params = {};
+      if (filter.q)              params.q = filter.q;
+      if (filter.cobrado !== "") params.cobrado = filter.cobrado;
+      if (filter.fecha_desde)    params.fecha_desde = filter.fecha_desde;
+      if (filter.fecha_hasta)    params.fecha_hasta = filter.fecha_hasta;
+      await descargarArchivo("/facturacion/pdf", params, "facturacion.pdf");
+    } catch (err) {
+      alert(err?.message || "No se pudo generar el PDF");
+    } finally { setBajando(null); }
+  };
+
+  const descargarComanda = async (fichaId) => {
+    setBajando(fichaId);
+    try {
+      await descargarArchivo(`/fichas/${fichaId}/comanda/pdf`, {}, `comanda-${fichaId}.pdf`);
+    } catch (err) {
+      alert(err?.message || "No se pudo generar el PDF de la comanda");
+    } finally { setBajando(null); }
+  };
+
   useEffect(() => { if (user) fetchData(); }, [fetchData, user]);
 
   const markCobrado = async (fichaId, cobrado) => {
@@ -247,8 +302,10 @@ export default function FacturacionPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style dangerouslySetInnerHTML={{ __html: PRINT_CSS }} />
+
       {/* Header */}
-      <header style={{
+      <header className="no-print" style={{
         position: "sticky", top: 0, zIndex: 100,
         background: "rgba(11,16,32,0.95)", backdropFilter: "blur(12px)",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -269,6 +326,15 @@ export default function FacturacionPage() {
               ⚙️ Catálogo
             </button>
           )}
+          <button className="btn" onClick={descargarLista} disabled={loading || bajando}
+            style={{ fontSize: 13, padding: "6px 12px", whiteSpace: "nowrap" }}>
+            {bajando === "lista" ? "Generando..." : "📄 Descargar PDF"}
+          </button>
+          <button className="btn-ghost" onClick={() => window.print()} disabled={loading}
+            title="Imprime la lista directo desde el navegador, sin descargar"
+            style={{ fontSize: 13, padding: "6px 12px", whiteSpace: "nowrap" }}>
+            🖨️ Imprimir
+          </button>
           <button className="btn-ghost" onClick={fetchData} style={{ fontSize: 13, padding: "6px 12px" }}>↻ Actualizar</button>
         </div>
       </header>
@@ -276,12 +342,12 @@ export default function FacturacionPage() {
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
         {/* Resumen */}
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-          <div className="card" style={{ flex: 1, minWidth: 180, padding: "16px 20px" }}>
+          <div className="card f-card" style={{ flex: 1, minWidth: 180, padding: "16px 20px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--subtext)", marginBottom: 6 }}>PENDIENTE DE COBRO</div>
             <div style={{ fontSize: 24, fontWeight: 900, color: "#f59e0b" }}>{CRC(totalPendiente)}</div>
             <div style={{ fontSize: 12, color: "var(--subtext)", marginTop: 2 }}>{rows.filter(r => !r.cobrado).length} comandas</div>
           </div>
-          <div className="card" style={{ flex: 1, minWidth: 180, padding: "16px 20px" }}>
+          <div className="card f-card" style={{ flex: 1, minWidth: 180, padding: "16px 20px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--subtext)", marginBottom: 6 }}>COBRADO (FILTRO ACTUAL)</div>
             <div style={{ fontSize: 24, fontWeight: 900, color: "#34d399" }}>{CRC(totalCobrado)}</div>
             <div style={{ fontSize: 12, color: "var(--subtext)", marginTop: 2 }}>{rows.filter(r => r.cobrado).length} comandas</div>
@@ -289,7 +355,7 @@ export default function FacturacionPage() {
         </div>
 
         {/* Filtros */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 135px 135px", gap: 10, marginBottom: 20 }}>
+        <div className="no-print" style={{ display: "grid", gridTemplateColumns: "1fr 130px 135px 135px", gap: 10, marginBottom: 20 }}>
           <input className="input" placeholder="Buscar propietario o mascota..." value={filter.q}
             onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} style={{ margin: 0 }} />
           <select className="input" value={filter.cobrado} onChange={e => setFilter(f => ({ ...f, cobrado: e.target.value }))} style={{ margin: 0 }}>
@@ -354,14 +420,20 @@ export default function FacturacionPage() {
                       <div style={{ fontSize: 22, fontWeight: 900, color: isPending ? "#f59e0b" : "#34d399" }}>
                         {CRC(row.total_comanda)}
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <div className="no-print" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                         <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }}
                           onClick={() => setExpanded(isExp ? null : row.id)}>
                           {isExp ? "▲ Ocultar" : "▼ Detalle"}
                         </button>
                         <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }}
+                          onClick={() => descargarComanda(row.id)}
+                          disabled={bajando === row.id}>
+                          {bajando === row.id ? "..." : "📄 PDF"}
+                        </button>
+                        <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }}
+                          title="Imprime el ticket directo, sin descargar"
                           onClick={() => printComanda(row)}>
-                          🖨️ Imprimir
+                          🖨️
                         </button>
                         {isPending ? (
                           <button className="btn" disabled={marking === row.id}
