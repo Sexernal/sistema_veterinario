@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import expressApi from "../../lib/expressApi";
-import { puede } from "../../components/permisos";
+import { puede, esPersonalClinico } from "../../components/permisos";
+import { descargarArchivo } from "../../components/descargar";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const CRC = (n) =>
@@ -181,6 +182,7 @@ export default function ConsolidadoPage() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [bajando, setBajando] = useState(false);
 
   // Guard: solo veterinarios (admin). El API también valida con requireAdmin.
   useEffect(() => {
@@ -195,6 +197,19 @@ export default function ConsolidadoPage() {
 
   // isAlive evita que una respuesta lenta de una fecha anterior pise a la actual
   // (el input date dispara un cambio por cada dígito del año que se escribe)
+  // Descarga el PDF generado en el SERVIDOR, no window.print().
+  // El diálogo del navegador no muestra vista previa en todos los entornos;
+  // un archivo real se abre en un visor donde sí se ven las páginas y se
+  // puede elegir cuál imprimir.
+  const descargarPDF = async () => {
+    setBajando(true);
+    try {
+      await descargarArchivo("/consolidado/pdf", { fecha }, `consolidado-${fecha}.pdf`);
+    } catch (err) {
+      alert(err?.message || "No se pudo generar el PDF");
+    } finally { setBajando(false); }
+  };
+
   const cargar = useCallback(async (f, isAlive = () => true) => {
     setLoading(true); setError(null);
     try {
@@ -246,9 +261,14 @@ export default function ConsolidadoPage() {
           <input className="input" type="date" value={fecha}
             onChange={e => setFecha(e.target.value)}
             style={{ maxWidth: 170, margin: 0 }} />
-          <button className="btn" onClick={() => window.print()} disabled={loading || !data}
+          <button className="btn" onClick={descargarPDF} disabled={loading || !data || bajando}
             style={{ whiteSpace: "nowrap" }}>
-            🖨️ Exportar PDF
+            {bajando ? "Generando..." : "📄 Descargar PDF"}
+          </button>
+          <button className="btn-ghost" onClick={() => window.print()} disabled={loading || !data}
+            title="Imprime directo desde el navegador, sin descargar"
+            style={{ whiteSpace: "nowrap", padding: "6px 12px", fontSize: 13 }}>
+            🖨️ Imprimir
           </button>
         </div>
       </header>
@@ -328,9 +348,14 @@ export default function ConsolidadoPage() {
               ) : data.fichas.map((f, i) => {
                 const edad = calcEdad(f.mascota.fecha_nacimiento);
                 const especieRaza = [f.mascota.especie, f.mascota.raza].filter(Boolean).join(" / ");
-                // uploaded_by puede ser recepcionista: solo se antepone "Dr." si es veterinario
+                // uploaded_by puede ser recepcionista: solo se antepone "Dr."
+                // a quien atiende pacientes.
+                // ⚠️ El PDF (services/consolidadoPdf.js en el API) usa esta misma
+                // regla. Si se cambia acá, cambiarla allá también.
                 const registrado = f.registrado_por_nombre
-                  ? (f.registrado_por_role === "admin" ? `Dr. ${f.registrado_por_nombre}` : f.registrado_por_nombre)
+                  ? (esPersonalClinico({ role: f.registrado_por_role })
+                      ? `Dr. ${f.registrado_por_nombre}`
+                      : f.registrado_por_nombre)
                   : "—";
                 return (
                 <Registro
